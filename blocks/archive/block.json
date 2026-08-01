@@ -1,0 +1,56 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "eventon-archive/archive",
+	"title": "EventON Archive",
+	"category": "widgets",
+	"icon": "calendar-alt",
+	"description": "A crawlable list of every published event, grouped by year and month. Members-only events are never listed.",
+	"keywords": [
+		"eventon",
+		"events",
+		"archive",
+		"calendar",
+		"past"
+	],
+	"textdomain": "eventon_archive",
+	"attributes": {
+		"order": {
+			"type": "string",
+			"default": "desc"
+		},
+		"show": {
+			"type": "string",
+			"default": "all"
+		},
+		"location": {
+			"type": "boolean",
+			"default": false
+		},
+		"category": {
+			"type": "boolean",
+			"default": false
+		},
+		"counters": {
+			"type": "boolean",
+			"default": false
+		},
+		"nav": {
+			"type": "boolean",
+			"default": true
+		}
+	},
+	"supports": {
+		"html": false,
+		"align": [
+			"wide",
+			"full"
+		],
+		"spacing": {
+			"margin": true,
+			"padding": true
+		}
+	},
+	"editorScript": "file:./editor.js",
+	"style": "eventon-archive"
+}

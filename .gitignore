@@ -1,0 +1,9 @@
+# Ignore files and directories that should not be committed to the repository
+.DS_Store
+*.zip
+*.log
+
+# Ignore Claude configuration and agent files
+.claude/settings.local.json
+.claude/agents/
+.claude/skills/

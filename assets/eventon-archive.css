@@ -1,0 +1,79 @@
+/*
+ * Deliberately almost nothing. The theme owns typography, colour and spacing;
+ * these rules only stop the list looking like a raw <ul> and give the date a
+ * predictable width so the titles line up.
+ */
+
+/* Totals strip. currentColor throughout so it takes the theme's text colour
+   rather than fighting it. */
+
+.eventon-archive__stats {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 1.5em 2.5em;
+	margin: 0 0 2em;
+	padding: 1.2em 0;
+	border-top: 1px solid currentColor;
+	border-bottom: 1px solid currentColor;
+	/* The rules read as hairlines instead of hard bars. */
+	border-color: color-mix( in srgb, currentColor 18%, transparent );
+}
+
+.eventon-archive__stat {
+	display: flex;
+	flex-direction: column;
+	gap: 0.15em;
+}
+
+.eventon-archive__stat-value {
+	display: block;
+	font-size: clamp( 1.9rem, 5vw, 2.6rem );
+	font-weight: 700;
+	line-height: 1;
+	/* Fixed-width digits: without this the number jitters as it counts up. */
+	font-variant-numeric: tabular-nums;
+	font-feature-settings: "tnum";
+}
+
+.eventon-archive__stat-label {
+	display: block;
+	font-size: 0.75rem;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	opacity: 0.65;
+}
+
+.eventon-archive__nav {
+	margin: 0 0 1.5em;
+}
+
+.eventon-archive__nav a {
+	display: inline-block;
+	margin: 0 0.75em 0.25em 0;
+}
+
+.eventon-archive__list {
+	list-style: none;
+	margin: 0 0 1.5em;
+	padding: 0;
+}
+
+.eventon-archive__item {
+	margin: 0 0 0.35em;
+}
+
+.eventon-archive__date {
+	display: inline-block;
+	min-width: 4.5em;
+	opacity: 0.7;
+}
+
+.eventon-archive__category,
+.eventon-archive__location {
+	opacity: 0.7;
+}
+
+.eventon-archive__category::before,
+.eventon-archive__location::before {
+	content: "\00b7\00a0";
+}
