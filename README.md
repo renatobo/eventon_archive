@@ -204,6 +204,11 @@ Use a cache buster if the site runs a page cache. Settings → EventON Archive r
 - Events are collected with a plain `WP_Query`, never through EventON's generator, which would re-apply both globals described above.
 - Deactivating clears both cron hooks and deletes the cache option. Nothing else is written.
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md). Releases and their zips are on the
+[releases page](https://github.com/renatobo/eventon_archive/releases).
+
 ## License
 
 GPLv2 or later.

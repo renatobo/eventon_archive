@@ -49,7 +49,7 @@ zip -qr eventon_archive-<version>.zip eventon_archive \
      'eventon_archive/composer.*' 'eventon_archive/phpstan.neon*' \
      'eventon_archive/phpunit.xml*' 'eventon_archive/CLAUDE.md'
 
-unzip -l eventon_archive-<version>.zip   # expect ~10 files, no .git, no vendor
+unzip -l eventon_archive-<version>.zip   # expect 16 files, no .git, no vendor, no tests
 ```
 
 Renato installs the zip by hand through Plugins → Add New → Upload. There is no deploy step and no CI.
@@ -99,6 +99,8 @@ grep -n "1\.9\.0" eventon_archive.php               # expect 2 hits
 ```
 
 Name the zip for the version and delete the previous one, so there is never any doubt which file is current.
+
+**Add the release to `CHANGELOG.md` before tagging.** It is user-facing and ships in the zip, and it is the only per-version record that exists: the repository history starts at 1.6.0 as a single squashed commit, so anything not written down there is gone. Keep the `### Security` heading reserved for things a user has to act on, not for hardening.
 
 ## Gotchas
 
