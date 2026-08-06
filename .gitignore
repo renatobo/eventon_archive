@@ -3,6 +3,11 @@
 *.zip
 *.log
 
+# Dev tooling only. PHPStan and the WordPress stubs are never part of a release:
+# composer.json and phpstan.neon.dist are committed, what they install is not.
+/vendor/
+/.phpunit.cache/
+
 # Ignore Claude configuration and agent files
 .claude/settings.local.json
 .claude/agents/

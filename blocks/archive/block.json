@@ -38,6 +38,18 @@
 		"nav": {
 			"type": "boolean",
 			"default": true
+		},
+		"family": {
+			"type": "string",
+			"default": ""
+		},
+		"limit": {
+			"type": "number",
+			"default": 0
+		},
+		"group": {
+			"type": "boolean",
+			"default": true
 		}
 	},
 	"supports": {

@@ -17,11 +17,29 @@ class EventON_Archive_Builder {
 	/**
 	 * How many rendered variants to keep in the cache option at once.
 	 *
-	 * Each set of shortcode attributes produces its own HTML. In practice a site
-	 * uses one or two, so this only exists to stop an attacker or a stray loop
-	 * growing the option without bound.
+	 * Each set of shortcode attributes produces its own HTML. Once `family` and
+	 * `limit` exist a site legitimately runs many variants: a "coming up" and a
+	 * "recent" list on every event-family hub page is two per hub. This only
+	 * exists to stop an attacker or a stray loop growing the option without
+	 * bound, so it is set well above real usage. Filterable.
 	 */
-	const MAX_CACHED_VARIANTS = 6;
+	const MAX_CACHED_VARIANTS = 24;
+
+	/**
+	 * Highest `limit` a render will honour. 0 still means "no cap".
+	 *
+	 * Not a display decision: it is the server-side half of the bound that
+	 * `block.json`'s RangeControl only pretends to enforce. The block previews
+	 * through core's `/wp/v2/block-renderer/` route, which accepts arbitrary
+	 * attributes from anyone with `edit_posts`, and every distinct `limit` mints
+	 * its own cache variant that costs a full `posts_per_page => -1` query plus an
+	 * option write to build. `MAX_CACHED_VARIANTS` caps how much of that is kept,
+	 * not how much of it runs.
+	 *
+	 * Set well above the RangeControl's 50 so it never interferes with a real
+	 * choice. Anything wanting more rows than this wants `limit="0"`.
+	 */
+	const MAX_LIMIT = 200;
 
 	/**
 	 * Membership-gated events skipped by the last collect_events() run.
@@ -53,6 +71,32 @@ class EventON_Archive_Builder {
 	 * @var int
 	 */
 	private static $total_in_window = 0;
+
+	/**
+	 * Events the last collect_events() run would actually list.
+	 *
+	 * Counted after the exclusion check but **before** `limit` is applied, so it
+	 * answers "how many could be shown" rather than "how many fit on the page".
+	 *
+	 * @var int
+	 */
+	private static $listed_count = 0;
+
+	/**
+	 * The family filter resolved by the last collect_events() run.
+	 *
+	 * `slug` is the EventON event-type taxonomy, `label` its display name, and
+	 * `known` is false when the caller asked for a family this site does not
+	 * have. Kept as a static for the same reason as the tallies: build_html() and
+	 * build_counters() need it and re-resolving would repeat the work.
+	 *
+	 * @var array{slug:string,label:string,known:bool}
+	 */
+	private static $family = array(
+		'slug'  => '',
+		'label' => '',
+		'known' => true,
+	);
 
 	/**
 	 * Shortcode entry point.
@@ -90,6 +134,18 @@ class EventON_Archive_Builder {
 				'counters' => 'no',
 				// Year jump links at the top.
 				'nav'      => 'yes',
+				// Restrict to one event family: an EventON event-type taxonomy slug
+				// ("event_type_2") or its display name ("Bike Night"). Empty means
+				// every family, which is the whole-archive behaviour this plugin
+				// shipped with.
+				'family'   => '',
+				// Cap the rows. 0 is no cap. The counters are unaffected: they
+				// describe the window, not the slice rendered from it.
+				'limit'    => 0,
+				// Year and month headings. Off gives one flat list, which is what a
+				// short "coming up" block on a hub page wants: five rows do not need
+				// an <h2>, and stray headings would pollute the page's outline.
+				'group'    => 'yes',
 			),
 			array_change_key_case( (array) $atts, CASE_LOWER ),
 			'eventon_archive'
@@ -102,8 +158,102 @@ class EventON_Archive_Builder {
 		$atts['category'] = self::is_yes( $atts['category'] );
 		$atts['counters'] = self::is_yes( $atts['counters'] );
 		$atts['nav']      = self::is_yes( $atts['nav'] );
+		$atts['group']    = self::is_yes( $atts['group'] );
+		$atts['limit']    = min( self::MAX_LIMIT, max( 0, (int) $atts['limit'] ) );
+
+		// Canonicalized to the taxonomy slug so that family="Bike Night" and
+		// family="event_type_2" share one cache entry instead of rendering the
+		// same list twice. An unresolvable value is kept as a key-safe token
+		// rather than dropped, so collect_events() can tell "no filter" apart
+		// from "filter this site cannot satisfy" and say so.
+		$family = trim( (string) $atts['family'] );
+
+		if ( '' !== $family ) {
+			$resolved       = self::resolve_family_slug( $family );
+			$atts['family'] = '' !== $resolved ? $resolved : sanitize_key( $family );
+		} else {
+			$atts['family'] = '';
+		}
+
+		// The year anchors a nav links to only exist when the list is grouped.
+		if ( ! $atts['group'] ) {
+			$atts['nav'] = false;
+		}
 
 		return $atts;
+	}
+
+	/**
+	 * Resolve a family argument to an EventON event-type taxonomy slug.
+	 *
+	 * Accepts the slug (`event_type_2`), the display name (`Bike Night`), or the
+	 * taxonomy's own longer label (`Bike Night Categories`), all case-insensitively,
+	 * because all three are things someone will reasonably type into a shortcode.
+	 *
+	 * @param string $raw Raw family argument.
+	 * @return string Taxonomy slug, or '' when nothing matches.
+	 */
+	private static function resolve_family_slug( $raw ) {
+		$raw = trim( (string) $raw );
+
+		if ( '' === $raw ) {
+			return '';
+		}
+
+		$taxonomies = self::event_taxonomies();
+
+		if ( isset( $taxonomies[ $raw ] ) ) {
+			return $raw;
+		}
+
+		// event_taxonomies() already strips " Categories" from the display name,
+		// so strip it from the needle too and the long form matches as well.
+		$needle = strtolower( (string) preg_replace( '/\s+categories$/i', '', $raw ) );
+
+		foreach ( $taxonomies as $slug => $label ) {
+			if ( strtolower( $label ) === $needle ) {
+				return $slug;
+			}
+		}
+
+		return '';
+	}
+
+	/**
+	 * How many rendered variants the cache option may hold.
+	 *
+	 * @return int
+	 */
+	private static function max_cached_variants() {
+		/**
+		 * Filters how many rendered variants the cache option keeps.
+		 *
+		 * @param int $max Maximum variants.
+		 */
+		return max( 1, (int) apply_filters( 'eventon_archive_max_variants', self::MAX_CACHED_VARIANTS ) );
+	}
+
+	/**
+	 * Drop the oldest entries until the set fits the variant cap.
+	 *
+	 * @param array $entries Cache entries keyed by signature, each with `built`.
+	 * @return array
+	 */
+	private static function trim_variants( array $entries ) {
+		$max = self::max_cached_variants();
+
+		if ( count( $entries ) <= $max ) {
+			return $entries;
+		}
+
+		uasort(
+			$entries,
+			static function ( $a, $b ) {
+				return ( $a['built'] ?? 0 ) <=> ( $b['built'] ?? 0 );
+			}
+		);
+
+		return array_slice( $entries, -$max, null, true );
 	}
 
 	/**
@@ -139,27 +289,113 @@ class EventON_Archive_Builder {
 			'html'  => $html,
 			'built' => time(),
 			'count' => count( $events ),
+			'bytes' => strlen( $html ),
 			'atts'  => $atts,
 		);
 
 		// Keep the option bounded: drop the oldest variants first.
-		if ( count( $cache['entries'] ) > self::MAX_CACHED_VARIANTS ) {
-			uasort(
-				$cache['entries'],
-				static function ( $a, $b ) {
-					return ( $a['built'] ?? 0 ) <=> ( $b['built'] ?? 0 );
-				}
-			);
-			$cache['entries'] = array_slice( $cache['entries'], -self::MAX_CACHED_VARIANTS, null, true );
-		}
+		$cache['entries'] = self::trim_variants( $cache['entries'] );
 
-		$cache['built'] = time();
-		$cache['count'] = count( $events );
+		// The top-level figures back "Events listed" on the settings screen, which
+		// is documented as checkable against the whole event set. Only the default
+		// whole-archive view may write them: a filtered or capped variant would
+		// otherwise leave the screen reporting "5 events" for the entire site.
+		if ( self::is_default_view( $atts ) ) {
+			$cache['built'] = time();
+			$cache['count'] = count( $events );
+		}
 
 		self::save_cache( $cache );
 		self::enqueue_assets( $atts );
 
 		return $html;
+	}
+
+	/**
+	 * Discard every cached variant and rebuild the default view, in that order.
+	 *
+	 * The order is the whole point. `flush_cache()` followed by `render()` deletes
+	 * the option first, so a rebuild that times out — and on a site with hundreds
+	 * of events that is a real `max_execution_time` risk — leaves nothing behind:
+	 * the settings screen then reports "never / 0", which reads as a broken plugin
+	 * rather than an unfinished job. Here the replacement is built in memory and
+	 * only written once it exists, so a failure anywhere above `save_cache()`
+	 * leaves the previous archive serving untouched.
+	 *
+	 * Deliberately does not enqueue anything: this runs from the settings screen
+	 * and from cron, where there is no page to add a stylesheet to.
+	 *
+	 * @return int Events the rebuilt archive lists.
+	 */
+	public static function rebuild_now() {
+		$atts   = self::normalize_atts( array() );
+		$events = self::collect_events( $atts );
+		$html   = self::build_html( $events, $atts );
+		$count  = count( $events );
+
+		// A fresh structure rather than a mutated one, which is what makes this a
+		// flush: every previously cached variant is dropped, because a rebuild is
+		// asked for precisely when the old ones are suspect.
+		$cache = array(
+			'entries' => array(
+				md5( wp_json_encode( $atts ) ) => array(
+					'html'  => $html,
+					'built' => time(),
+					'count' => $count,
+					'bytes' => strlen( $html ),
+					'atts'  => $atts,
+				),
+			),
+			// Seed the tally cache from the collection that just ran, so the first
+			// [eventon_archive_count] after a rebuild does not repeat the query.
+			'counts'  => array(
+				self::counts_signature( $atts ) => array(
+					'data'  => self::current_counts(),
+					'built' => time(),
+				),
+			),
+			'built'   => time(),
+			'count'   => $count,
+		);
+
+		self::save_cache( $cache );
+
+		return $count;
+	}
+
+	/**
+	 * Cache signature for a set of counter figures.
+	 *
+	 * Only `family` and `show` change the result, so only those are hashed. One
+	 * place, because `counts()` and `rebuild_now()` both need it and a drifted
+	 * copy would leave the seeded tally unreachable.
+	 *
+	 * @param array $atts Normalized attributes.
+	 * @return string
+	 */
+	private static function counts_signature( array $atts ) {
+		return md5(
+			wp_json_encode(
+				array(
+					'family' => $atts['family'],
+					'show'   => $atts['show'],
+				)
+			)
+		);
+	}
+
+	/**
+	 * Is this the unfiltered whole-archive view?
+	 *
+	 * Only the presentation options may differ. `show`, `family` and `limit` all
+	 * change *which* events are counted, so any of them set means the render
+	 * describes a subset and must not speak for the whole archive.
+	 *
+	 * @param array $atts Normalized attributes.
+	 * @return bool
+	 */
+	private static function is_default_view( array $atts ) {
+		return 'all' === $atts['show'] && '' === $atts['family'] && 0 === $atts['limit'];
 	}
 
 	/**
@@ -176,6 +412,9 @@ class EventON_Archive_Builder {
 		if ( ! isset( $cache['entries'] ) || ! is_array( $cache['entries'] ) ) {
 			$cache['entries'] = array();
 		}
+		if ( ! isset( $cache['counts'] ) || ! is_array( $cache['counts'] ) ) {
+			$cache['counts'] = array();
+		}
 
 		return $cache;
 	}
@@ -189,12 +428,16 @@ class EventON_Archive_Builder {
 	 * @param array $cache Cache payload.
 	 */
 	private static function save_cache( array $cache ) {
+		// `false`, not the string 'no'. Core still maps 'no' to 'off' in
+		// wp_determine_option_autoload_value(), but that is the legacy-compat
+		// branch: since 6.6 the parameter is typed bool|null and the string form
+		// only survives for back compat.
 		if ( false === get_option( EVENTON_ARCHIVE_CACHE_OPTION, false ) ) {
-			add_option( EVENTON_ARCHIVE_CACHE_OPTION, $cache, '', 'no' );
+			add_option( EVENTON_ARCHIVE_CACHE_OPTION, $cache, '', false );
 			return;
 		}
 
-		update_option( EVENTON_ARCHIVE_CACHE_OPTION, $cache, 'no' );
+		update_option( EVENTON_ARCHIVE_CACHE_OPTION, $cache, false );
 	}
 
 	/**
@@ -216,6 +459,41 @@ class EventON_Archive_Builder {
 	 * @return array[] List of event rows, sorted.
 	 */
 	public static function collect_events( array $atts ) {
+		$all_families = self::event_taxonomies();
+
+		self::$family = array(
+			'slug'  => '',
+			'label' => '',
+			'known' => true,
+		);
+
+		if ( '' !== $atts['family'] ) {
+			if ( ! isset( $all_families[ $atts['family'] ] ) ) {
+				// Asked for a family this site does not have. Returning everything
+				// would be the worse failure: a hub page would silently start
+				// listing the whole archive. Return nothing and let build_html()
+				// leave a comment saying why.
+				self::$family = array(
+					'slug'  => $atts['family'],
+					'label' => '',
+					'known' => false,
+				);
+
+				self::$members_only_count = 0;
+				self::$family_totals      = array();
+				self::$total_in_window    = 0;
+				self::$listed_count       = 0;
+
+				return array();
+			}
+
+			self::$family = array(
+				'slug'  => $atts['family'],
+				'label' => $all_families[ $atts['family'] ],
+				'known' => true,
+			);
+		}
+
 		$query_args = array(
 			'post_type'              => 'ajde_events',
 			'post_status'            => 'publish',
@@ -248,14 +526,14 @@ class EventON_Archive_Builder {
 		// Same for terms, but only when something actually needs them. Without
 		// this, get_the_terms() would fire one query per event, so 400 events
 		// with categories on would cost 400 round trips.
-		$needs_terms = $atts['location'] || $atts['category'] || $atts['counters'];
+		$needs_terms = $atts['location'] || $atts['category'] || $atts['counters'] || '' !== $atts['family'];
 
 		if ( $needs_terms ) {
 			update_object_term_cache( $ids, 'ajde_events' );
 		}
 
 		// Resolved once, not once per event.
-		$taxonomies = ( $atts['category'] || $atts['counters'] ) ? self::event_taxonomies() : array();
+		$taxonomies = ( $atts['category'] || $atts['counters'] ) ? $all_families : array();
 
 		// current_time('timestamp') is local-wall-time-as-UTC, the same convention
 		// EventON stores evcal_srow in, so the two are directly comparable.
@@ -265,6 +543,7 @@ class EventON_Archive_Builder {
 		self::$members_only_count = 0;
 		self::$family_totals      = array();
 		self::$total_in_window    = 0;
+		self::$listed_count       = 0;
 
 		foreach ( $ids as $id ) {
 			// Dates first, so an event held back for membership is still measured
@@ -285,6 +564,18 @@ class EventON_Archive_Builder {
 			}
 			if ( 'future' === $atts['show'] && $is_past ) {
 				continue;
+			}
+
+			// The family filter sits with the date filters, above the tallies,
+			// because it narrows the *window* the counters describe rather than
+			// hiding events from a list. "How many bike nights have there been"
+			// has to count bike nights only. Exclusions still sit below.
+			if ( '' !== self::$family['slug'] ) {
+				$family_terms = get_the_terms( $id, self::$family['slug'] );
+
+				if ( empty( $family_terms ) || is_wp_error( $family_terms ) ) {
+					continue;
+				}
 			}
 
 			$members_only = self::is_members_only( $id );
@@ -346,7 +637,130 @@ class EventON_Archive_Builder {
 		 * @param array[] $events Event rows.
 		 * @param array   $atts   Normalized shortcode attributes.
 		 */
-		return apply_filters( 'eventon_archive_events', $events, $atts );
+		$events = apply_filters( 'eventon_archive_events', $events, $atts );
+
+		// Recorded before the cap, so it answers "how many could be listed" and
+		// stays comparable with the counters. Set after the filter so rows added
+		// there are included.
+		self::$listed_count = count( $events );
+
+		// Capped last, so the filter above cannot be bypassed by it and the cap
+		// always applies to the final ordering.
+		if ( $atts['limit'] > 0 && count( $events ) > $atts['limit'] ) {
+			$events = array_slice( $events, 0, $atts['limit'] );
+		}
+
+		return $events;
+	}
+
+	/**
+	 * Counter figures for a window, without rendering anything.
+	 *
+	 * The public read side of the same tallies the counters strip uses, so a
+	 * sentence like "DROC has run 119 bike nights since 2018" can be assembled
+	 * from the archive rather than hand-counted and left to rot.
+	 *
+	 * Only `family` and `show` affect the result, so the signature is built from
+	 * those two alone: `limit` describes the slice a page renders, never the
+	 * window being counted, and every presentation option is irrelevant here.
+	 * That also means one cached tally serves every page asking about the same
+	 * window.
+	 *
+	 * @param array $atts Raw attributes. `family` and `show` are the only ones read.
+	 * @return array{total:int,listed:int,members_only:int,families:array<string,int>,family:array}
+	 */
+	public static function counts( array $atts = array() ) {
+		$atts      = self::normalize_atts( $atts );
+		$signature = self::counts_signature( $atts );
+		$cache     = self::get_cache();
+
+		if ( isset( $cache['counts'][ $signature ]['data'] ) && is_array( $cache['counts'][ $signature ]['data'] ) ) {
+			return $cache['counts'][ $signature ]['data'];
+		}
+
+		// counters on forces the term cache priming and the taxonomy resolution
+		// that populate the family tallies; limit off because a cap must never
+		// reach a figure that describes the window.
+		self::collect_events(
+			array_merge(
+				$atts,
+				array(
+					'counters' => true,
+					'limit'    => 0,
+				)
+			)
+		);
+
+		$data = self::current_counts();
+
+		$cache['counts'][ $signature ] = array(
+			'data'  => $data,
+			'built' => time(),
+		);
+
+		$cache['counts'] = self::trim_variants( $cache['counts'] );
+
+		self::save_cache( $cache );
+
+		return $data;
+	}
+
+	/**
+	 * The tallies left behind by the most recent collect_events() run.
+	 *
+	 * @return array{total:int,listed:int,members_only:int,families:array<string,int>,family:array}
+	 */
+	private static function current_counts() {
+		return array(
+			'total'        => self::$total_in_window,
+			'listed'       => self::$listed_count,
+			'members_only' => self::$members_only_count,
+			'families'     => self::$family_totals,
+			'family'       => self::$family,
+		);
+	}
+
+	/**
+	 * `[eventon_archive_count]` — one figure, for use inline in a sentence.
+	 *
+	 * @param array|string $atts Raw shortcode attributes.
+	 * @return string
+	 */
+	public static function count_shortcode( $atts ) {
+		$atts = shortcode_atts(
+			array(
+				'family' => '',
+				'show'   => 'all',
+				// total | listed | members_only.
+				'of'     => 'total',
+				// html wraps the number in a span; plain returns bare digits, for
+				// use inside an attribute or a title.
+				'format' => 'html',
+			),
+			array_change_key_case( is_array( $atts ) ? $atts : array(), CASE_LOWER ),
+			'eventon_archive_count'
+		);
+
+		$counts = self::counts(
+			array(
+				'family' => $atts['family'],
+				'show'   => $atts['show'],
+			)
+		);
+
+		$of = strtolower( (string) $atts['of'] );
+		$of = in_array( $of, array( 'total', 'listed', 'members_only' ), true ) ? $of : 'total';
+
+		$value = (int) ( $counts[ $of ] ?? 0 );
+
+		if ( 'plain' === strtolower( (string) $atts['format'] ) ) {
+			return (string) $value;
+		}
+
+		return sprintf(
+			'<span class="eventon-archive-count">%s</span>',
+			esc_html( number_format_i18n( $value ) )
+		);
 	}
 
 	/**
@@ -504,8 +918,13 @@ class EventON_Archive_Builder {
 			}
 
 			if ( '' === $label ) {
-				$label = (string) ( $taxonomy->label ?? $slug );
-				$label = preg_replace( '/\s+Categories$/i', '', $label );
+				// Falling back to `label`, which EventON sets to the family name
+				// plus " Categories", so the suffix comes off. An empty label
+				// falls through to the slug: a blank heading is worse than a
+				// machine-readable one. Cast because preg_replace() is typed
+				// ?string, and a null would land in an array of strings.
+				$label = '' !== $taxonomy->label ? (string) $taxonomy->label : $slug;
+				$label = (string) preg_replace( '/\s+Categories$/i', '', $label );
 			}
 
 			$found[ $slug ] = $label;
@@ -557,9 +976,44 @@ class EventON_Archive_Builder {
 	 */
 	public static function build_html( array $events, array $atts ) {
 		if ( empty( $events ) ) {
-			return '<div class="eventon-archive eventon-archive--empty"><p>'
+			$out = '<div class="eventon-archive eventon-archive--empty"><p>'
 				. esc_html__( 'No events to show yet.', 'eventon_archive' )
 				. '</p></div>';
+
+			// An empty list because the family does not exist looks identical to an
+			// empty list because nothing is scheduled. Say which, in a comment, so
+			// a typo in a shortcode is findable from View Source.
+			if ( ! self::$family['known'] ) {
+				$out .= sprintf(
+					"\n<!-- eventon_archive: unknown family \"%s\". Expected one of: %s -->\n",
+					esc_html( self::$family['slug'] ),
+					esc_html( implode( ', ', array_keys( self::event_taxonomies() ) ) )
+				);
+			}
+
+			return $out;
+		}
+
+		// One flat list, no headings. Short lists on a hub page want this: five
+		// rows under an <h2>2026</h2><h3>August</h3> shell reads as scaffolding,
+		// and the headings would land in the host page's outline.
+		if ( ! $atts['group'] ) {
+			$out  = '<div class="eventon-archive eventon-archive--flat">';
+			$out .= self::build_counters( $events, $atts );
+			$out .= '<ul class="eventon-archive__list">';
+
+			foreach ( $events as $event ) {
+				$out .= self::build_item( $event, $atts );
+			}
+
+			$out .= '</ul></div>';
+			$out .= sprintf(
+				"\n<!-- eventon_archive: %d events, built %s -->\n",
+				count( $events ),
+				esc_html( gmdate( 'c' ) )
+			);
+
+			return $out;
 		}
 
 		// Group by year, then by month. gmdate() is correct here, not date(): the
@@ -633,32 +1087,48 @@ class EventON_Archive_Builder {
 			return '';
 		}
 
-		// One figure per event-type taxonomy (Ride, Bike Night, Track Day, MotoGP
-		// Watch Party), not per term. Seeded from the taxonomy list so the order
-		// follows EventON's own slot order rather than whichever family happens
-		// to be largest this month.
-		//
-		// The tallies come from collect_events() rather than from $events,
-		// because they include members-only events that the list itself omits.
-		$by_family = array();
+		// Read through the same counts object the [eventon_archive_count] shortcode
+		// uses, so a figure in a sentence and a figure in the strip can never
+		// disagree. The tallies come from collect_events() rather than from
+		// $events, because they include members-only events the list omits, and
+		// because `limit` must not reach them.
+		$counts = self::current_counts();
 
-		foreach ( self::event_taxonomies() as $label ) {
-			$by_family[ $label ] = 0;
-		}
+		if ( '' !== $counts['family']['slug'] && $counts['family']['known'] ) {
+			// Filtered to one family, so the total already *is* that family. A
+			// separate per-family row would restate the same number under a
+			// second label, so the total takes the family's name instead.
+			$stats = array(
+				array(
+					'label' => $counts['family']['label'],
+					'value' => $counts['total'],
+				),
+			);
+		} else {
+			// One figure per event-type taxonomy (Ride, Bike Night, Track Day,
+			// MotoGP Watch Party), not per term. Seeded from the taxonomy list so
+			// the order follows EventON's own slot order rather than whichever
+			// family happens to be largest this month.
+			$by_family = array();
 
-		foreach ( self::$family_totals as $family => $total ) {
-			$by_family[ $family ] = $total;
-		}
+			foreach ( self::event_taxonomies() as $label ) {
+				$by_family[ $label ] = 0;
+			}
 
-		$stats = array(
-			array(
-				'label' => __( 'Events', 'eventon_archive' ),
-				'value' => self::$total_in_window,
-			),
-		);
+			foreach ( $counts['families'] as $family => $total ) {
+				$by_family[ $family ] = $total;
+			}
 
-		foreach ( $by_family as $label => $value ) {
-			$stats[] = array( 'label' => $label, 'value' => $value );
+			$stats = array(
+				array(
+					'label' => __( 'Events', 'eventon_archive' ),
+					'value' => $counts['total'],
+				),
+			);
+
+			foreach ( $by_family as $label => $value ) {
+				$stats[] = array( 'label' => $label, 'value' => $value );
+			}
 		}
 
 		// Members-only events are never listed, but saying how many there are is
@@ -666,7 +1136,7 @@ class EventON_Archive_Builder {
 		// that this page can make.
 		$stats[] = array(
 			'label' => __( 'Members only', 'eventon_archive' ),
-			'value' => self::$members_only_count,
+			'value' => $counts['members_only'],
 		);
 
 		/**
@@ -747,9 +1217,13 @@ class EventON_Archive_Builder {
 	private static function build_item( array $event, array $atts ) {
 		$iso = gmdate( 'Y-m-d', $event['start'] );
 
+		// A flat list has no year heading above it, so the row has to carry the
+		// year itself or "Aug 13" is ambiguous across an eight-year archive.
+		$format = $atts['group'] ? 'M j' : 'M j, Y';
+
 		// UTC forced for the same reason as the month label: the timestamp is
 		// already wall time, so any offset would move the printed date.
-		$display = wp_date( 'M j', $event['start'], new DateTimeZone( 'UTC' ) );
+		$display = wp_date( $format, $event['start'], new DateTimeZone( 'UTC' ) );
 
 		$item = sprintf(
 			'<li class="eventon-archive__item"><time class="eventon-archive__date" datetime="%s">%s</time> <a href="%s">%s</a>',

@@ -1,0 +1,47 @@
+# Static analysis for the EventON Archive plugin.
+#
+# Dev-only. Nothing here ships: the zip is built from the plugin files alone,
+# and `vendor/` is gitignored. See CLAUDE.md, "Verify and Package".
+#
+# Run it with:  vendor/bin/phpstan analyse --memory-limit=2G
+# The 2G is not optional. php-stubs/wordpress-stubs is a single ~9 MB file and
+# the default 512M limit crashes the parallel workers partway through.
+
+includes:
+	- vendor/szepeviktor/phpstan-wordpress/extension.neon
+
+parameters:
+	# Level 5 checks argument and return types against real signatures, which is
+	# where the bugs are. Level 6 adds "every parameter needs a declared value
+	# type", which on this codebase is 42 findings that all say "annotate this
+	# array" and 0 that say "this is broken". Worth doing as its own deliberate
+	# pass over the ~15 array signatures, giving them real shapes rather than
+	# array<string, mixed>. Not worth doing as 42 lines of noise on day one.
+	level: 5
+
+	paths:
+		- eventon_archive.php
+		- includes
+
+	# WordPress's own docblocks are not precise enough to reason from. The stubs
+	# type get_the_terms() as returning WP_Term[] and WP_Taxonomy::$label as a
+	# plain string, so PHPStan calls the `instanceof WP_Term` guard in
+	# location_name() and the `?? $slug` fallback in event_taxonomies() dead
+	# code. They are not dead: they are defence against EventON handing back
+	# something unexpected, and deleting them to satisfy a docblock would trade
+	# real robustness for a clean report.
+	treatPhpDocTypesAsCertain: false
+
+	# The plugin's own constants, defined in eventon_archive.php before the
+	# includes are pulled in. PHPStan analyses each file in isolation, so it
+	# cannot see that the bootstrap always runs first.
+	bootstrapFiles:
+		- tests/phpstan-bootstrap.php
+
+	# No ignoreErrors, deliberately. The two integrations into other plugins
+	# (droc_is_arm_restricted, get_arm_term_meta) need no entry: both sit behind
+	# function_exists(), and PHPStan follows that guard on its own. An ignore for
+	# them was written first and reported as unmatched, which is the check
+	# telling you the suppression was unnecessary. Listen to it.
+	#
+	# No baseline either. At this size, findings get fixed, not banked.

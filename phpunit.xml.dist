@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+	Unit tests only. No database, no WordPress install, no Docker.
+
+	These cover the builder logic that is its own: attribute coercion, family
+	resolution, the date grouping keys, the default-view gate and variant
+	eviction. Everything that genuinely needs WordPress — WP_Query, post meta,
+	terms, the options table, the admin form — is out of scope and stays that way
+	until this plugin has a reason to carry an integration harness. See CLAUDE.md,
+	"Testing", for the reasoning.
+-->
+<phpunit
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+	bootstrap="tests/bootstrap.php"
+	colors="true"
+	cacheDirectory=".phpunit.cache"
+	failOnWarning="true"
+	failOnNotice="true"
+	failOnDeprecation="true"
+	beStrictAboutOutputDuringTests="true"
+>
+	<testsuites>
+		<testsuite name="unit">
+			<directory>tests</directory>
+		</testsuite>
+	</testsuites>
+</phpunit>

@@ -3,7 +3,7 @@
  * Plugin Name:       EventON Archive
  * Plugin URI:        https://github.com/renatobo/eventon_archive
  * Description:       Builds a cached, crawlable archive of every EventON event, grouped by year and month. Exists so past events are reachable by search engines: EventON's calendars hide them behind AJAX, a rolling WP_Query window, and a hide-past setting, which leaves hundreds of event pages orphaned.
- * Version:           1.6.0
+ * Version:           1.8.0
  * Requires at least: 6.5
  * Requires PHP:      8.0
  * Author:            Renato Bonomini
@@ -23,7 +23,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'EVENTON_ARCHIVE_VERSION', '1.6.0' );
+define( 'EVENTON_ARCHIVE_VERSION', '1.8.0' );
 define( 'EVENTON_ARCHIVE_FILE', __FILE__ );
 define( 'EVENTON_ARCHIVE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'EVENTON_ARCHIVE_URL', plugin_dir_url( __FILE__ ) );
@@ -45,6 +45,10 @@ require_once EVENTON_ARCHIVE_DIR . 'includes/class-eventon-archive-admin.php';
  */
 function eventon_archive_init() {
 	add_shortcode( 'eventon_archive', array( 'EventON_Archive_Builder', 'shortcode' ) );
+
+	// One figure, for use inline in a sentence: "DROC has run
+	// [eventon_archive_count family="Bike Night"] bike nights since 2018."
+	add_shortcode( 'eventon_archive_count', array( 'EventON_Archive_Builder', 'count_shortcode' ) );
 
 	// Registered up front so block.json can reference the handle as its style,
 	// and so every enqueue path below can pass the handle alone.
@@ -81,6 +85,12 @@ function eventon_archive_init() {
 	// the core/post-content block, long after wp_enqueue_scripts has run, and a
 	// style enqueued at that point is deferred to the footer.
 	add_action( 'wp_enqueue_scripts', 'eventon_archive_maybe_enqueue_early' );
+
+	// Hand the editor the real event-family list. Deliberately on this hook and
+	// not at init: EventON registers its event_type taxonomies on init too, and
+	// nothing guarantees it runs before this plugin, so reading them at init is a
+	// race. By the time block editor assets are enqueued they always exist.
+	add_action( 'enqueue_block_editor_assets', 'eventon_archive_editor_data' );
 
 	if ( is_admin() ) {
 		EventON_Archive_Admin::init();
@@ -122,6 +132,45 @@ function eventon_archive_maybe_enqueue_early() {
 add_action( 'init', 'eventon_archive_init' );
 
 /**
+ * Expose the event families to the block editor as `window.eventonArchiveFamilies`.
+ *
+ * A plain inline script rather than a REST route: it is a handful of label/value
+ * pairs that never change mid-session, and `editor.js` is ES5 with no build step,
+ * so a synchronous global costs nothing and an async fetch would need state
+ * handling. Nothing here is sensitive; taxonomy display names are public.
+ *
+ * The list comes from `event_taxonomies()`, the same map the counters strip and
+ * the `category` option already print, so the editor names and the rendered names
+ * cannot drift. It carries the short form ("Bike Night"), not EventON's longer
+ * "Bike Night Categories" label.
+ */
+function eventon_archive_editor_data() {
+	$registry = WP_Block_Type_Registry::get_instance();
+	$block    = $registry ? $registry->get_registered( 'eventon-archive/archive' ) : null;
+
+	if ( ! $block || empty( $block->editor_script_handles ) ) {
+		// No handle to attach to. The editor falls back to "All families", which
+		// is the shipped behaviour, so this degrades rather than breaking.
+		return;
+	}
+
+	$families = array();
+
+	foreach ( EventON_Archive_Builder::event_taxonomies() as $slug => $label ) {
+		$families[] = array(
+			'value' => $slug,
+			'label' => $label,
+		);
+	}
+
+	wp_add_inline_script(
+		(string) reset( $block->editor_script_handles ),
+		'window.eventonArchiveFamilies = ' . wp_json_encode( $families ) . ';',
+		'before'
+	);
+}
+
+/**
  * Register the editor block.
  *
  * The block and the shortcode are two front doors onto the same renderer. The
@@ -158,12 +207,15 @@ function eventon_archive_render_block( $attributes ) {
 }
 
 /**
- * Rebuild the cache from cron: drop everything, then warm the default view so
- * the first visitor after the run does not pay for the query.
+ * Rebuild the cache from cron.
+ *
+ * `rebuild_now()` builds the replacement before discarding the old variants, so a
+ * cron run killed by a timeout leaves the previous archive serving rather than an
+ * empty option. Warming the default view here means the first visitor after the
+ * run does not pay for the query.
  */
 function eventon_archive_cron_rebuild() {
-	EventON_Archive_Builder::flush_cache();
-	EventON_Archive_Builder::render( array() );
+	EventON_Archive_Builder::rebuild_now();
 }
 
 /**

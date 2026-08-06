@@ -68,6 +68,12 @@
 	opacity: 0.7;
 }
 
+/* An ungrouped list carries the year in every row ("Aug 13, 2026"), which does
+   not fit the column width a grouped list needs. */
+.eventon-archive--flat .eventon-archive__date {
+	min-width: 7em;
+}
+
 .eventon-archive__category,
 .eventon-archive__location {
 	opacity: 0.7;

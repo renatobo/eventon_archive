@@ -1,0 +1,27 @@
+{
+	"name": "renatobo/eventon-archive",
+	"description": "Development tooling for the EventON Archive WordPress plugin. Nothing here ships: the plugin is four files and has no runtime dependencies.",
+	"type": "wordpress-plugin",
+	"license": "GPL-2.0-or-later",
+	"require": {
+		"php": ">=8.0"
+	},
+	"require-dev": {
+		"phpstan/phpstan": "^2.0",
+		"szepeviktor/phpstan-wordpress": "^2.0",
+		"phpunit/phpunit": "^11 || ^12"
+	},
+	"config": {
+		"allow-plugins": {
+			"phpstan/extension-installer": true
+		}
+	},
+	"scripts": {
+		"analyse": "phpstan analyse --memory-limit=2G",
+		"test": "phpunit",
+		"check": [
+			"@analyse",
+			"@test"
+		]
+	}
+}

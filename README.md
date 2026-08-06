@@ -57,9 +57,50 @@ Both take the same options and share the same cache.
 | `location` | `no` | Append the venue name after each title |
 | `category` | `no` | Append the event family, e.g. "Bike Night" |
 | `counters` | `no` | Totals strip above the list |
-| `nav` | `yes` | Year jump links at the top |
+| `nav` | `yes` | Year jump links at the top. Ignored when `group` is `no`, since the links target the year headings |
+| `family` | *every family* | Limit to one event family. Accepts the name (`Bike Night`) or the taxonomy slug (`event_type_2`) |
+| `limit` | `0` | Most events to list. `0` is no cap |
+| `group` | `yes` | Year and month headings. `no` gives one flat list with the year on every row |
 
 Default order is `desc` because the point of the page is surfacing past events, and the recent past is the part anyone actually wants.
+
+## One family, a few rows: the hub-page case
+
+The whole-archive view answers a crawler. A page about one kind of event wants a short, current list of that kind, which is what `family` plus `limit` plus `group="no"` gives:
+
+```
+[eventon_archive family="Bike Night" show="future" order="asc"  limit="5" group="no" nav="no"]
+[eventon_archive family="Bike Night" show="past"   order="desc" limit="6" group="no" nav="no"]
+```
+
+That replaces the hand-written "coming up" and "recently" lists these pages otherwise accumulate, which are wrong within weeks and silently stay wrong.
+
+**`family` is a taxonomy, not a term.** EventON registers one taxonomy per activated event-type slot and *the taxonomy is the family*; its terms are the venues and sub-types underneath. So `family` takes `event_type_2`, or equivalently `Bike Night`, or `Bike Night Categories`, all case-insensitively. In the block editor it is a dropdown of the families this site actually has, by name.
+
+Asking for a family that does not exist lists **nothing** and leaves the reason in an HTML comment. Listing everything instead would mean one typo silently turning a hub page into a copy of the full archive.
+
+**`limit` never reaches the counters.** They describe the window, so `counters="yes" limit="5"` correctly shows "119 Bike Night" above a five-row list. Same principle as members-only events being counted but not listed.
+
+**Order matters more than it looks with `show="future"`.** The default `desc` plus a cap gives you the events furthest away, not the next few. Pass `order="asc"`.
+
+## One figure in a sentence
+
+```
+DROC has run [eventon_archive_count family="Bike Night"] bike nights since 2018.
+```
+
+Reads the same tallies as the counters strip, from the same cache, so a number in prose and a number in the strip cannot drift apart.
+
+| Attribute | Default | Effect |
+|---|---|---|
+| `family` | *every family* | As above |
+| `show` | `all` | `all`, `past`, or `future` |
+| `of` | `total` | `total` counts everything in the window, members-only included. `listed` counts what the archive may show. `members_only` counts what is withheld |
+| `format` | `html` | `html` wraps the number in a `<span class="eventon-archive-count">`. `plain` returns bare digits, for use inside an attribute |
+
+No block for this one: it belongs mid-paragraph, where a shortcode expands and a block does not. Like any shortcode it does not expand in Site Editor templates.
+
+For code, `EventON_Archive_Builder::counts( [ 'family' => 'event_type_2', 'show' => 'past' ] )` returns `total`, `listed`, `members_only`, `families` and the resolved `family`.
 
 ## What it renders
 
@@ -107,13 +148,19 @@ An event counts toward a family if it has at least one term in that taxonomy, an
 
 **The counters include members-only events; the list does not.** An archive claiming "38 track days" while quietly omitting the members-only ones under-reports what the club actually did. The separate **Members only** figure says how many are withheld from the list below.
 
+**`show` and `family` define the window the counters describe; `limit` does not.** With `family="Bike Night"` the total *is* the bike-night count, so the strip drops the per-family row and labels the total with the family name instead of restating one number under two headings.
+
 **Any figure that would render as zero is dropped**, including one added through the `eventon_archive_counters` filter. A counter reading 0 draws the eye to say nothing.
 
 **The real figures are server-rendered.** `assets/eventon-archive-counters.js` only winds them back to about 15% and runs them forward again, easing out over 1.1s, triggered by an `IntersectionObserver` when the strip scrolls into view. Crawlers, no-JS readers, and anyone with `prefers-reduced-motion: reduce` see the true number, and if the script fails to load nothing is lost. Digits use `tabular-nums` and the element's width is locked before the first frame, so nothing reflows while it counts.
 
 ## Caching
 
-Rendered HTML lives in the `eventon_archive_cache` option, **autoload off**, keyed by a hash of the attributes so several variants coexist (capped at six).
+Rendered HTML lives in the `eventon_archive_cache` option, **autoload off**, keyed by a hash of the attributes so several variants coexist (capped at 24, raise or lower with `eventon_archive_max_variants`). The cap is 24 rather than a handful because two lists on each event-family hub page is two variants per hub.
+
+Counter tallies are cached alongside the HTML under their own key, hashed from `family` and `show` alone. Every page asking about the same window therefore shares one tally, whatever it does with `limit` or the presentation options.
+
+**Only the unfiltered whole-archive view writes the "Events listed" figure** on the settings screen. A `family` or `limit` render describes a subset, and letting it write that figure would leave the screen reporting "5 events" for the entire site.
 
 Rebuilt **daily at 03:20 local**, **five minutes after any event is saved, trashed or deleted** (debounced, so a bulk edit rebuilds once rather than once per post), and **on demand** from Settings → EventON Archive. Cron discards the cache and immediately re-warms the default view, so the first visitor after a rebuild never pays for the query.
 

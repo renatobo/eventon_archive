@@ -15,6 +15,53 @@
 	var PanelBody = components.PanelBody;
 	var SelectControl = components.SelectControl;
 	var ToggleControl = components.ToggleControl;
+	var RangeControl = components.RangeControl;
+
+	/**
+	 * Event families, injected by eventon_archive_editor_data() as
+	 * [ { value: 'event_type_2', label: 'Bike Night' }, … ].
+	 *
+	 * Falls back to an empty list, which leaves only "All families" selectable.
+	 * That is the behaviour before this option existed, so a missing global
+	 * degrades instead of breaking the editor.
+	 */
+	function familyOptions() {
+		var injected = window.eventonArchiveFamilies;
+		var options = [ { label: __( 'All families', 'eventon_archive' ), value: '' } ];
+		var i;
+
+		if ( ! injected || ! injected.length ) {
+			return options;
+		}
+
+		for ( i = 0; i < injected.length; i++ ) {
+			options.push( {
+				label: injected[ i ].label,
+				value: injected[ i ].value
+			} );
+		}
+
+		return options;
+	}
+
+	/**
+	 * Names of the configured families, for help text: "Ride, Bike Night, …".
+	 */
+	function familyNames() {
+		var injected = window.eventonArchiveFamilies;
+		var names = [];
+		var i;
+
+		if ( ! injected ) {
+			return '';
+		}
+
+		for ( i = 0; i < injected.length; i++ ) {
+			names.push( injected[ i ].label );
+		}
+
+		return names.join( ', ' );
+	}
 
 	blocks.registerBlockType( 'eventon-archive/archive', {
 		edit: function ( props ) {
@@ -27,6 +74,15 @@
 				el(
 					PanelBody,
 					{ title: __( 'Archive settings', 'eventon_archive' ) },
+					el( SelectControl, {
+						label: __( 'Event family', 'eventon_archive' ),
+						help: __( 'Limit the list to one kind of event. The names come from the event types configured in EventON.', 'eventon_archive' ),
+						value: attributes.family || '',
+						options: familyOptions(),
+						onChange: function ( value ) {
+							setAttributes( { family: value } );
+						}
+					} ),
 					el( SelectControl, {
 						label: __( 'Order', 'eventon_archive' ),
 						value: attributes.order,
@@ -50,6 +106,26 @@
 							setAttributes( { show: value } );
 						}
 					} ),
+					el( RangeControl, {
+						label: __( 'Maximum events', 'eventon_archive' ),
+						help: __( '0 shows every event. With "Upcoming only", set Order to "Oldest first" or a capped list gives you the events furthest away instead of the next few.', 'eventon_archive' ),
+						value: attributes.limit || 0,
+						min: 0,
+						max: 50,
+						allowReset: true,
+						resetFallbackValue: 0,
+						onChange: function ( value ) {
+							setAttributes( { limit: parseInt( value, 10 ) || 0 } );
+						}
+					} ),
+					el( ToggleControl, {
+						label: __( 'Group by year and month', 'eventon_archive' ),
+						help: __( 'Off gives one flat list with the year on every row. Use that for a short list inside a page, so its headings stay out of the page outline.', 'eventon_archive' ),
+						checked: !! attributes.group,
+						onChange: function ( value ) {
+							setAttributes( { group: !! value } );
+						}
+					} ),
 					el( ToggleControl, {
 						label: __( 'Show venue name', 'eventon_archive' ),
 						checked: !! attributes.location,
@@ -59,7 +135,9 @@
 					} ),
 					el( ToggleControl, {
 						label: __( 'Show event category', 'eventon_archive' ),
-						help: __( 'Adds the event family: Ride, Bike Night, Track Day, MotoGP Watch Party.', 'eventon_archive' ),
+						help: familyNames()
+							? __( 'Adds the event family after each title: ', 'eventon_archive' ) + familyNames() + '.'
+							: __( 'Adds the event family after each title.', 'eventon_archive' ),
 						checked: !! attributes.category,
 						onChange: function ( value ) {
 							setAttributes( { category: !! value } );
@@ -75,7 +153,14 @@
 					} ),
 					el( ToggleControl, {
 						label: __( 'Year jump links', 'eventon_archive' ),
-						checked: !! attributes.nav,
+						// The links target the year headings, so an ungrouped list has
+						// nothing to jump to. The renderer forces this off in that
+						// case; disabling it here keeps the panel honest.
+						help: attributes.group
+							? __( 'Shown only when the list spans more than one year.', 'eventon_archive' )
+							: __( 'Needs "Group by year and month".', 'eventon_archive' ),
+						disabled: ! attributes.group,
+						checked: !! attributes.group && !! attributes.nav,
 						onChange: function ( value ) {
 							setAttributes( { nav: !! value } );
 						}
