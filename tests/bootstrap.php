@@ -239,10 +239,86 @@ class WP_Error {
 }
 
 /**
- * Minimal WP_Term, for the location_name() term-name path.
+ * Minimal WP_Term, for the location_name() and venue-filter term paths.
+ *
+ * `slug` exists because the venue filter matches on it: `name` is what gets
+ * printed, `slug` is what identifies the term.
  */
 class WP_Term {
-	public function __construct( public int $term_id = 0, public string $name = '' ) {}
+	public function __construct( public int $term_id = 0, public string $name = '', public string $slug = '' ) {}
+}
+
+/**
+ * The `event_location` terms the fake `get_terms()` will report.
+ *
+ * Mutable like the taxonomy set above, so a test can model a site with no venues
+ * registered. Real EventON venue terms, slug => name.
+ *
+ * @var array<string,string>
+ */
+$GLOBALS['eventon_archive_test_venues'] = array(
+	'buttonwillow-raceway-park' => 'Buttonwillow Raceway Park',
+	'chuckwalla-valley-raceway' => 'Chuckwalla Valley Raceway',
+	'ducati-newport-beach'      => 'Ducati Newport Beach',
+);
+
+/**
+ * Reset the fake venue set to the drocdesmo-shaped default.
+ */
+function eventon_archive_test_reset_venues(): void {
+	$GLOBALS['eventon_archive_test_venues'] = array(
+		'buttonwillow-raceway-park' => 'Buttonwillow Raceway Park',
+		'chuckwalla-valley-raceway' => 'Chuckwalla Valley Raceway',
+		'ducati-newport-beach'      => 'Ducati Newport Beach',
+	);
+}
+
+/**
+ * Stand-in for taxonomy_exists(). The fake site has EventON's taxonomies.
+ *
+ * @param string $taxonomy Taxonomy name.
+ * @return bool
+ */
+function taxonomy_exists( $taxonomy ) {
+	return 'event_location' === $taxonomy
+		|| isset( $GLOBALS['eventon_archive_test_taxonomies'][ $taxonomy ] );
+}
+
+/**
+ * Stand-in for get_terms(), for `event_location` only.
+ *
+ * Honest to reproduce in a few lines because only the slug and name are read.
+ * Anything else returns an empty array rather than pretending.
+ *
+ * @param array $args Query args; only `taxonomy` is honoured.
+ * @return WP_Term[]
+ */
+function get_terms( $args = array() ) {
+	if ( ! is_array( $args ) || 'event_location' !== ( $args['taxonomy'] ?? '' ) ) {
+		return array();
+	}
+
+	$terms = array();
+	$i     = 0;
+
+	foreach ( $GLOBALS['eventon_archive_test_venues'] as $slug => $name ) {
+		$terms[] = new WP_Term( ++$i, $name, $slug );
+	}
+
+	return $terms;
+}
+
+/**
+ * Stand-in for sanitize_title(). Lowercase, non-alphanumerics to hyphens.
+ *
+ * @param string $title Raw title.
+ * @return string
+ */
+function sanitize_title( $title ) {
+	$title = strtolower( (string) $title );
+	$title = (string) preg_replace( '/[^a-z0-9_\-]+/', '-', $title );
+
+	return trim( $title, '-' );
 }
 
 require_once dirname( __DIR__ ) . '/includes/class-eventon-archive-builder.php';

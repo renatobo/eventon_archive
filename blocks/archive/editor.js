@@ -45,6 +45,32 @@
 	}
 
 	/**
+	 * Venues, injected by eventon_archive_editor_data() as
+	 * [ { value: 'buttonwillow-raceway-park', label: 'Buttonwillow Raceway Park' }, … ].
+	 *
+	 * Same fallback as families: a missing global leaves only "All venues", which
+	 * is the behaviour before this option existed.
+	 */
+	function venueOptions() {
+		var injected = window.eventonArchiveVenues;
+		var options = [ { label: __( 'All venues', 'eventon_archive' ), value: '' } ];
+		var i;
+
+		if ( ! injected || ! injected.length ) {
+			return options;
+		}
+
+		for ( i = 0; i < injected.length; i++ ) {
+			options.push( {
+				label: injected[ i ].label,
+				value: injected[ i ].value
+			} );
+		}
+
+		return options;
+	}
+
+	/**
 	 * Names of the configured families, for help text: "Ride, Bike Night, …".
 	 */
 	function familyNames() {
@@ -81,6 +107,15 @@
 						options: familyOptions(),
 						onChange: function ( value ) {
 							setAttributes( { family: value } );
+						}
+					} ),
+					el( SelectControl, {
+						label: __( 'Venue', 'eventon_archive' ),
+						help: __( 'Limit the list to one location. Use this for a venue page that should list every DROC day at that circuit or bar.', 'eventon_archive' ),
+						value: attributes.venue || '',
+						options: venueOptions(),
+						onChange: function ( value ) {
+							setAttributes( { venue: value } );
 						}
 					} ),
 					el( SelectControl, {

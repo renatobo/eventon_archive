@@ -4,6 +4,34 @@ All notable changes to EventON Archive. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-08-05
+
+### Added
+
+- **`venue` attribute** on `[eventon_archive]`, the block, and
+  `[eventon_archive_count]`. Filters the list to one `event_location` term, so a
+  venue page can carry a self-maintaining list of every DROC day at that circuit
+  or bar instead of hand-typed prose that goes stale. Accepts the term slug or
+  the display name, case-insensitively, and both spellings share one cache entry.
+  In the block editor it is a dropdown of the venues the site actually has.
+- A venue dropdown in the block inspector, fed by a new
+  `window.eventonArchiveVenues` global alongside the existing families one.
+
+### Notes
+
+- **`venue` filters, `location` prints.** The pre-existing `location` attribute
+  only decides whether the venue name is appended after each title. The two read
+  almost the same and do unrelated jobs; a test asserts they stay independent.
+- **`venue` is a term, not a taxonomy**, the opposite of `family`. An event with
+  more than one `event_location` term matches on any of them, so a ride listing a
+  meetup point and a destination still appears on its destination's page.
+- An unknown venue lists nothing and says why in an HTML comment, matching the
+  existing `family` behaviour. Failing closed matters more here than for family:
+  a venue page quietly rendering the whole archive would look plausible.
+- `venue` counts as a narrowing option, so it keys `counts_signature()` and
+  disqualifies `is_default_view()` the way `family`, `show` and `limit` do.
+- Unit tests 61 to 71.
+
 ## [1.8.0] - 2026-08-05
 
 Version 1.7.0 was never released. Its work is included here, so this release
@@ -91,5 +119,6 @@ both are the kind of thing that could plausibly regress:
   timestamp. Reading them with the site's timezone applied shifted printed
   dates by a day, and put a 1 January event under the previous year's heading.
 
+[1.9.0]: https://github.com/renatobo/eventon_archive/releases/tag/v1.9.0
 [1.8.0]: https://github.com/renatobo/eventon_archive/releases/tag/v1.8.0
 [1.6.0]: https://github.com/renatobo/eventon_archive/releases/tag/v1.6.0

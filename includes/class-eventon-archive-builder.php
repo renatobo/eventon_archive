@@ -99,6 +99,21 @@ class EventON_Archive_Builder {
 	);
 
 	/**
+	 * The resolved venue filter for the current render.
+	 *
+	 * Same shape and same reasoning as `$family`: `slug` is an `event_location`
+	 * term slug, `label` its display name, and `known` is false when the caller
+	 * asked for a venue this site does not have.
+	 *
+	 * @var array{slug:string,label:string,known:bool}
+	 */
+	private static $venue = array(
+		'slug'  => '',
+		'label' => '',
+		'known' => true,
+	);
+
+	/**
 	 * Shortcode entry point.
 	 *
 	 * @param array|string $atts Raw shortcode attributes.
@@ -139,6 +154,14 @@ class EventON_Archive_Builder {
 				// every family, which is the whole-archive behaviour this plugin
 				// shipped with.
 				'family'   => '',
+				// Restrict to one venue: an `event_location` term slug
+				// ("buttonwillow-raceway-park") or its display name
+				// ("Buttonwillow Raceway Park"). Empty means every venue.
+				//
+				// `venue` filters, `location` above only decides whether the venue
+				// name is printed after each title. The two are easy to confuse and
+				// do unrelated jobs.
+				'venue'    => '',
 				// Cap the rows. 0 is no cap. The counters are unaffected: they
 				// describe the window, not the slice rendered from it.
 				'limit'    => 0,
@@ -175,12 +198,115 @@ class EventON_Archive_Builder {
 			$atts['family'] = '';
 		}
 
+		// Canonicalized to the term slug for the same cache reason as family, so
+		// venue="Buttonwillow Raceway Park" and venue="buttonwillow-raceway-park"
+		// share one entry. An unresolvable value survives as a key-safe token so
+		// collect_events() can tell "no filter" from "filter this site cannot
+		// satisfy", which is the difference between listing everything and
+		// listing nothing.
+		$venue = trim( (string) $atts['venue'] );
+
+		if ( '' !== $venue ) {
+			$resolved      = self::resolve_venue_slug( $venue );
+			$atts['venue'] = '' !== $resolved ? $resolved : sanitize_title( $venue );
+		} else {
+			$atts['venue'] = '';
+		}
+
 		// The year anchors a nav links to only exist when the list is grouped.
 		if ( ! $atts['group'] ) {
 			$atts['nav'] = false;
 		}
 
 		return $atts;
+	}
+
+	/**
+	 * Resolve a venue argument to an `event_location` term slug.
+	 *
+	 * Accepts the slug (`buttonwillow-raceway-park`) or the display name
+	 * (`Buttonwillow Raceway Park`), case-insensitively, because both are things
+	 * someone will reasonably type into a shortcode.
+	 *
+	 * Unlike families, venues are *terms* in one taxonomy rather than taxonomies
+	 * themselves, so there is no " Categories" suffix to strip and no label
+	 * indirection: `get_terms()` is the whole lookup.
+	 *
+	 * @param string $raw Raw venue argument.
+	 * @return string Term slug, or '' when nothing matches.
+	 */
+	private static function resolve_venue_slug( $raw ) {
+		$raw = trim( (string) $raw );
+
+		if ( '' === $raw ) {
+			return '';
+		}
+
+		$terms = self::venue_terms();
+
+		if ( isset( $terms[ $raw ] ) ) {
+			return $raw;
+		}
+
+		$needle = strtolower( $raw );
+
+		foreach ( $terms as $slug => $name ) {
+			if ( strtolower( $name ) === $needle ) {
+				return $slug;
+			}
+		}
+
+		return '';
+	}
+
+	/**
+	 * Every `event_location` term, for the block editor's venue dropdown.
+	 *
+	 * Public counterpart to the private cache, mirroring `event_taxonomies()`.
+	 * The editor needs the list and has no business reaching into internals.
+	 *
+	 * @return array<string,string> Term slug => term name.
+	 */
+	public static function venue_options() {
+		return self::venue_terms();
+	}
+
+	/**
+	 * Every `event_location` term on the site, as slug => name.
+	 *
+	 * Deliberately not memoized in a static. It is called at most twice per
+	 * render, once to resolve the argument and once to validate it, and WordPress
+	 * already caches `get_terms()` in the object cache. A static would survive a
+	 * whole request, which is wrong for the daily rebuild that renders several
+	 * variants in one go, and it would leak between unit tests.
+	 *
+	 * @return array<string,string> Term slug => term name.
+	 */
+	private static function venue_terms() {
+		$found = array();
+
+		if ( ! taxonomy_exists( 'event_location' ) ) {
+			return $found;
+		}
+
+		$terms = get_terms(
+			array(
+				'taxonomy'   => 'event_location',
+				'hide_empty' => false,
+			)
+		);
+
+		if ( is_wp_error( $terms ) || ! is_array( $terms ) ) {
+			return $found;
+		}
+
+		foreach ( $terms as $term ) {
+			if ( $term instanceof WP_Term ) {
+				$found[ $term->slug ] = $term->name;
+			}
+		}
+
+		return $found;
 	}
 
 	/**
@@ -378,6 +504,7 @@ class EventON_Archive_Builder {
 			wp_json_encode(
 				array(
 					'family' => $atts['family'],
+					'venue'  => $atts['venue'],
 					'show'   => $atts['show'],
 				)
 			)
@@ -387,15 +514,18 @@ class EventON_Archive_Builder {
 	/**
 	 * Is this the unfiltered whole-archive view?
 	 *
-	 * Only the presentation options may differ. `show`, `family` and `limit` all
-	 * change *which* events are counted, so any of them set means the render
-	 * describes a subset and must not speak for the whole archive.
+	 * Only the presentation options may differ. `show`, `family`, `venue` and
+	 * `limit` all change *which* events are counted, so any of them set means the
+	 * render describes a subset and must not speak for the whole archive.
 	 *
 	 * @param array $atts Normalized attributes.
 	 * @return bool
 	 */
 	private static function is_default_view( array $atts ) {
-		return 'all' === $atts['show'] && '' === $atts['family'] && 0 === $atts['limit'];
+		return 'all' === $atts['show']
+			&& '' === $atts['family']
+			&& '' === $atts['venue']
+			&& 0 === $atts['limit'];
 	}
 
 	/**
@@ -494,6 +624,40 @@ class EventON_Archive_Builder {
 			);
 		}
 
+		self::$venue = array(
+			'slug'  => '',
+			'label' => '',
+			'known' => true,
+		);
+
+		if ( '' !== $atts['venue'] ) {
+			$all_venues = self::venue_terms();
+
+			if ( ! isset( $all_venues[ $atts['venue'] ] ) ) {
+				// Same call as the unknown family above: a venue page that silently
+				// listed the entire archive would be a worse failure than an empty
+				// list, so return nothing and let build_html() say why.
+				self::$venue = array(
+					'slug'  => $atts['venue'],
+					'label' => '',
+					'known' => false,
+				);
+
+				self::$members_only_count = 0;
+				self::$family_totals      = array();
+				self::$total_in_window    = 0;
+				self::$listed_count       = 0;
+
+				return array();
+			}
+
+			self::$venue = array(
+				'slug'  => $atts['venue'],
+				'label' => $all_venues[ $atts['venue'] ],
+				'known' => true,
+			);
+		}
+
 		$query_args = array(
 			'post_type'              => 'ajde_events',
 			'post_status'            => 'publish',
@@ -526,7 +690,7 @@ class EventON_Archive_Builder {
 		// Same for terms, but only when something actually needs them. Without
 		// this, get_the_terms() would fire one query per event, so 400 events
 		// with categories on would cost 400 round trips.
-		$needs_terms = $atts['location'] || $atts['category'] || $atts['counters'] || '' !== $atts['family'];
+		$needs_terms = $atts['location'] || $atts['category'] || $atts['counters'] || '' !== $atts['family'] || '' !== $atts['venue'];
 
 		if ( $needs_terms ) {
 			update_object_term_cache( $ids, 'ajde_events' );
@@ -574,6 +738,16 @@ class EventON_Archive_Builder {
 				$family_terms = get_the_terms( $id, self::$family['slug'] );
 
 				if ( empty( $family_terms ) || is_wp_error( $family_terms ) ) {
+					continue;
+				}
+			}
+
+			// Venue sits with family for the same reason: it narrows the window the
+			// counters describe, so "how many days have we run at this circuit" has
+			// to count that circuit only. Unlike family, which asks whether the
+			// event carries any term in a taxonomy, this asks for one specific term.
+			if ( '' !== self::$venue['slug'] ) {
+				if ( ! self::has_venue( $id, self::$venue['slug'] ) ) {
 					continue;
 				}
 			}
@@ -730,6 +904,10 @@ class EventON_Archive_Builder {
 		$atts = shortcode_atts(
 			array(
 				'family' => '',
+				// Same venue filter as the list, so a venue page can say "DROC has
+				// run N days at this circuit" from the same tallies the list uses,
+				// instead of a hand-typed number that goes stale.
+				'venue'  => '',
 				'show'   => 'all',
 				// total | listed | members_only.
 				'of'     => 'total',
@@ -744,6 +922,7 @@ class EventON_Archive_Builder {
 		$counts = self::counts(
 			array(
 				'family' => $atts['family'],
+				'venue'  => $atts['venue'],
 				'show'   => $atts['show'],
 			)
 		);
@@ -876,6 +1055,40 @@ class EventON_Archive_Builder {
 	 * @param int $post_id Event ID.
 	 * @return string
 	 */
+	/**
+	 * Does this event carry the given `event_location` term?
+	 *
+	 * EventON allows more than one location term per event, so this checks every
+	 * term rather than only the first the way `location_name()` does. A ride that
+	 * lists both a meetup point and a destination should still match its
+	 * destination's venue page.
+	 *
+	 * @param int    $post_id Event ID.
+	 * @param string $slug    Term slug to match.
+	 * @return bool
+	 */
+	private static function has_venue( $post_id, $slug ) {
+		$terms = get_the_terms( $post_id, 'event_location' );
+
+		if ( empty( $terms ) || is_wp_error( $terms ) ) {
+			return false;
+		}
+
+		foreach ( $terms as $term ) {
+			if ( $term instanceof WP_Term && $term->slug === $slug ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * The first `event_location` term name for an event, for display.
+	 *
+	 * @param int $post_id Event ID.
+	 * @return string
+	 */
 	private static function location_name( $post_id ) {
 		$terms = get_the_terms( $post_id, 'event_location' );
 
@@ -988,6 +1201,13 @@ class EventON_Archive_Builder {
 					"\n<!-- eventon_archive: unknown family \"%s\". Expected one of: %s -->\n",
 					esc_html( self::$family['slug'] ),
 					esc_html( implode( ', ', array_keys( self::event_taxonomies() ) ) )
+				);
+			}
+
+			if ( ! self::$venue['known'] ) {
+				$out .= sprintf(
+					"\n<!-- eventon_archive: unknown venue \"%s\". Expected an event_location term slug. -->\n",
+					esc_html( self::$venue['slug'] )
 				);
 			}
 

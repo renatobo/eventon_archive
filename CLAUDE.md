@@ -71,7 +71,7 @@ Notes on the PHPStan setup, all of them things that will look wrong later otherw
 
 ## Testing
 
-`composer test`, or `vendor/bin/phpunit`. 61 unit tests, no database, no WordPress install, no Docker, ~15ms.
+`composer test`, or `vendor/bin/phpunit`. 71 unit tests, no database, no WordPress install, no Docker, ~15ms.
 
 `tests/bootstrap.php` is a deliberately small fake WordPress: faithful reimplementations of `shortcode_atts()`, `sanitize_key()`, `wp_date()`, `current_time()`, the `esc_*` family, and a `get_object_taxonomies()` that reports EventON-shaped `event_type*` taxonomies from `$GLOBALS['eventon_archive_test_taxonomies']`, which a test can rewrite to model a site with different or no event types.
 

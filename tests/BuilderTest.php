@@ -256,6 +256,7 @@ final class BuilderTest extends TestCase {
 			'past only'   => array( array( 'show' => 'past' ) ),
 			'future only' => array( array( 'show' => 'future' ) ),
 			'one family'  => array( array( 'family' => 'Bike Night' ) ),
+			'one venue'   => array( array( 'venue' => 'Buttonwillow Raceway Park' ) ),
 			'capped'      => array( array( 'limit' => 5 ) ),
 		);
 	}
@@ -536,5 +537,86 @@ final class BuilderTest extends TestCase {
 
 		$this->assertStringContainsString( 'eventon-archive--empty', $html );
 		$this->assertStringContainsString( 'No events to show yet.', $html );
+	}
+
+	// -------------------------------------------------------------------------
+	// 6. Venue resolution.
+	//
+	// Same contract as family, against `event_location` terms instead of
+	// taxonomies: the slug and the display name must canonicalize to one value so
+	// two spellings of the same venue page do not mint two cache entries, and an
+	// unresolvable venue must stay distinguishable from "no filter" so a venue
+	// page fails closed instead of listing the whole archive.
+	// -------------------------------------------------------------------------
+
+	#[DataProvider( 'venue_spellings' )]
+	public function test_venue_resolves_to_the_term_slug( string $input ): void {
+		$atts = EventON_Archive_Builder::normalize_atts( array( 'venue' => $input ) );
+
+		$this->assertSame( 'buttonwillow-raceway-park', $atts['venue'] );
+	}
+
+	public static function venue_spellings(): array {
+		return array(
+			'slug'         => array( 'buttonwillow-raceway-park' ),
+			'display name' => array( 'Buttonwillow Raceway Park' ),
+			'lowercased'   => array( 'buttonwillow raceway park' ),
+			'padded'       => array( '  Buttonwillow Raceway Park  ' ),
+		);
+	}
+
+	public function test_every_venue_spelling_shares_one_cache_key(): array {
+		$keys = array();
+
+		foreach ( self::venue_spellings() as $case ) {
+			$atts   = EventON_Archive_Builder::normalize_atts( array( 'venue' => $case[0] ) );
+			$keys[] = md5( (string) wp_json_encode( $atts ) );
+		}
+
+		$this->assertCount( 1, array_unique( $keys ) );
+
+		return $keys;
+	}
+
+	public function test_empty_venue_means_no_filter(): void {
+		$atts = EventON_Archive_Builder::normalize_atts( array( 'venue' => '   ' ) );
+
+		$this->assertSame( '', $atts['venue'] );
+	}
+
+	public function test_unknown_venue_survives_as_a_slug_not_as_no_filter(): void {
+		// The whole point: an unresolvable venue must not collapse to '', because
+		// '' means "list everything" and a venue page listing everything is the
+		// failure this filter exists to prevent.
+		$atts = EventON_Archive_Builder::normalize_atts( array( 'venue' => 'Not A Real Circuit' ) );
+
+		$this->assertSame( 'not-a-real-circuit', $atts['venue'] );
+		$this->assertNotSame( '', $atts['venue'] );
+	}
+
+	public function test_venue_and_location_are_independent(): void {
+		// `venue` filters, `location` prints. Setting one must not imply the other,
+		// because they read almost the same and do unrelated jobs.
+		$atts = EventON_Archive_Builder::normalize_atts( array( 'venue' => 'buttonwillow-raceway-park' ) );
+
+		$this->assertFalse( $atts['location'] );
+
+		$atts = EventON_Archive_Builder::normalize_atts( array( 'location' => 'yes' ) );
+
+		$this->assertSame( '', $atts['venue'] );
+	}
+
+	public function test_venue_filter_is_absent_when_the_site_has_no_venue_terms(): void {
+		$GLOBALS['eventon_archive_test_venues'] = array();
+
+		try {
+			$atts = EventON_Archive_Builder::normalize_atts( array( 'venue' => 'Buttonwillow Raceway Park' ) );
+
+			// No terms to resolve against, so it falls through to the key-safe
+			// token and still fails closed rather than listing everything.
+			$this->assertSame( 'buttonwillow-raceway-park', $atts['venue'] );
+		} finally {
+			eventon_archive_test_reset_venues();
+		}
 	}
 }

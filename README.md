@@ -59,6 +59,7 @@ Both take the same options and share the same cache.
 | `counters` | `no` | Totals strip above the list |
 | `nav` | `yes` | Year jump links at the top. Ignored when `group` is `no`, since the links target the year headings |
 | `family` | *every family* | Limit to one event family. Accepts the name (`Bike Night`) or the taxonomy slug (`event_type_2`) |
+| `venue` | *every venue* | Limit to one location. Accepts the name (`Buttonwillow Raceway Park`) or the `event_location` term slug (`buttonwillow-raceway-park`) |
 | `limit` | `0` | Most events to list. `0` is no cap |
 | `group` | `yes` | Year and month headings. `no` gives one flat list with the year on every row |
 
@@ -79,6 +80,31 @@ That replaces the hand-written "coming up" and "recently" lists these pages othe
 
 Asking for a family that does not exist lists **nothing** and leaves the reason in an HTML comment. Listing everything instead would mean one typo silently turning a hub page into a copy of the full archive.
 
+## One venue: the circuit and bar pages
+
+A page about a place wants the same treatment a family hub gets, and `venue` is
+the term-level equivalent of `family`:
+
+```
+[eventon_archive venue="Buttonwillow Raceway Park" show="past" order="desc" group="no" nav="no"]
+```
+
+DROC has run [eventon_archive_count venue="Buttonwillow Raceway Park" format="plain"] days at this circuit.
+
+**`venue` filters, `location` prints.** They read almost the same and do
+unrelated jobs: `location="yes"` appends the venue name after each title,
+`venue="…"` decides which events appear at all. Setting one never implies the
+other.
+
+**`venue` is a term, not a taxonomy**, which is the opposite of `family`. It
+matches `event_location` terms, and an event carrying more than one location term
+matches on any of them, so a ride listing both a meetup point and a destination
+still appears on its destination's page.
+
+Asking for a venue that does not exist lists **nothing** and leaves the reason in
+an HTML comment, for the same reason as `family`: a typo must not turn a venue
+page into a copy of the whole archive.
+
 **`limit` never reaches the counters.** They describe the window, so `counters="yes" limit="5"` correctly shows "119 Bike Night" above a five-row list. Same principle as members-only events being counted but not listed.
 
 **Order matters more than it looks with `show="future"`.** The default `desc` plus a cap gives you the events furthest away, not the next few. Pass `order="asc"`.
@@ -94,6 +120,7 @@ Reads the same tallies as the counters strip, from the same cache, so a number i
 | Attribute | Default | Effect |
 |---|---|---|
 | `family` | *every family* | As above |
+| `venue` | *every venue* | As above |
 | `show` | `all` | `all`, `past`, or `future` |
 | `of` | `total` | `total` counts everything in the window, members-only included. `listed` counts what the archive may show. `members_only` counts what is withheld |
 | `format` | `html` | `html` wraps the number in a `<span class="eventon-archive-count">`. `plain` returns bare digits, for use inside an attribute |

@@ -3,7 +3,7 @@
  * Plugin Name:       EventON Archive
  * Plugin URI:        https://github.com/renatobo/eventon_archive
  * Description:       Builds a cached, crawlable archive of every EventON event, grouped by year and month. Exists so past events are reachable by search engines: EventON's calendars hide them behind AJAX, a rolling WP_Query window, and a hide-past setting, which leaves hundreds of event pages orphaned.
- * Version:           1.8.0
+ * Version:           1.9.0
  * Requires at least: 6.5
  * Requires PHP:      8.0
  * Author:            Renato Bonomini
@@ -23,7 +23,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'EVENTON_ARCHIVE_VERSION', '1.8.0' );
+define( 'EVENTON_ARCHIVE_VERSION', '1.9.0' );
 define( 'EVENTON_ARCHIVE_FILE', __FILE__ );
 define( 'EVENTON_ARCHIVE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'EVENTON_ARCHIVE_URL', plugin_dir_url( __FILE__ ) );
@@ -163,9 +163,19 @@ function eventon_archive_editor_data() {
 		);
 	}
 
+	$venues = array();
+
+	foreach ( EventON_Archive_Builder::venue_options() as $slug => $name ) {
+		$venues[] = array(
+			'value' => $slug,
+			'label' => $name,
+		);
+	}
+
 	wp_add_inline_script(
 		(string) reset( $block->editor_script_handles ),
-		'window.eventonArchiveFamilies = ' . wp_json_encode( $families ) . ';',
+		'window.eventonArchiveFamilies = ' . wp_json_encode( $families ) . ';'
+			. "\n" . 'window.eventonArchiveVenues = ' . wp_json_encode( $venues ) . ';',
 		'before'
 	);
 }
