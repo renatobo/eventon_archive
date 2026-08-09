@@ -3,7 +3,7 @@
  * Plugin Name:       EventON Archive
  * Plugin URI:        https://github.com/renatobo/eventon_archive
  * Description:       Builds a cached, crawlable archive of every EventON event, grouped by year and month. Exists so past events are reachable by search engines: EventON's calendars hide them behind AJAX, a rolling WP_Query window, and a hide-past setting, which leaves hundreds of event pages orphaned.
- * Version:           1.9.0
+ * Version:           1.10.0
  * Requires at least: 6.5
  * Requires PHP:      8.0
  * Author:            Renato Bonomini
@@ -23,7 +23,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'EVENTON_ARCHIVE_VERSION', '1.9.0' );
+define( 'EVENTON_ARCHIVE_VERSION', '1.10.0' );
 define( 'EVENTON_ARCHIVE_FILE', __FILE__ );
 define( 'EVENTON_ARCHIVE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'EVENTON_ARCHIVE_URL', plugin_dir_url( __FILE__ ) );
@@ -39,6 +39,43 @@ define( 'EVENTON_ARCHIVE_CRON_SOON', 'eventon_archive_rebuild_soon' );
 
 require_once EVENTON_ARCHIVE_DIR . 'includes/class-eventon-archive-builder.php';
 require_once EVENTON_ARCHIVE_DIR . 'includes/class-eventon-archive-admin.php';
+
+/**
+ * EventON is a hard dependency: the archive is built entirely from its
+ * `ajde_events` posts and their `evcal_srow` / `repeat_intervals` meta.
+ *
+ * A runtime check rather than a `Requires Plugins` header, because EventON
+ * installs into a directory named `eventON` and core drops any dependency slug
+ * that is not lowercase-and-hyphens, so it can never be declared there. It also
+ * catches EventON being deactivated after this plugin was already running,
+ * which the header would not.
+ */
+function eventon_archive_has_eventon() {
+	return class_exists( 'EventON' ) && function_exists( 'EVO' );
+}
+
+/**
+ * Dependency notice.
+ *
+ * A missing EventON is not fatal here: the shortcode still renders, it just
+ * renders an empty archive, and the cached copy of the last good build stays on
+ * the page until something rebuilds it. That reads as the plugin being broken,
+ * so say what it actually is.
+ */
+function eventon_archive_dependency_notice() {
+	if ( ! current_user_can( 'activate_plugins' ) ) {
+		return;
+	}
+
+	if ( eventon_archive_has_eventon() ) {
+		return;
+	}
+
+	echo '<div class="notice notice-error"><p>';
+	echo esc_html__( 'EventON Archive needs EventON to be active. Until it is, there are no events to collect and a rebuild will empty the archive.', 'eventon_archive' );
+	echo '</p></div>';
+}
+add_action( 'admin_notices', 'eventon_archive_dependency_notice' );
 
 /**
  * Boot the plugin.

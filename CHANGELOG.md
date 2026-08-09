@@ -4,6 +4,27 @@ All notable changes to EventON Archive. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-08-09
+
+Version 1.9.0 was never released. Its work is included here, so this release
+covers everything since 1.8.0.
+
+### Added
+
+- **An admin notice when EventON is not active.** The archive is built entirely
+  from EventON's `ajde_events` posts, so without it there is nothing to collect
+  and the next rebuild empties the page while the settings screen reports a
+  successful build of zero events. That reads as this plugin being broken. The
+  notice names the actual cause.
+
+### Notes
+
+- The dependency is declared at runtime rather than through the `Requires
+  Plugins` header. EventON installs into a directory named `eventON`, and
+  WordPress drops any dependency slug that is not lowercase-and-hyphens, so it
+  can never be named there. The runtime check also catches EventON being
+  deactivated after this plugin was already running, which the header does not.
+
 ## [1.9.0] - 2026-08-05
 
 ### Added
