@@ -39,7 +39,7 @@ parameters:
 		- tests/phpstan-bootstrap.php
 
 	# No ignoreErrors, deliberately. The two integrations into other plugins
-	# (droc_is_arm_restricted, get_arm_term_meta) need no entry: both sit behind
+	# (droc_noindex_is_arm_restricted, get_arm_term_meta) need no entry: both sit behind
 	# function_exists(), and PHPStan follows that guard on its own. An ignore for
 	# them was written first and reported as unmatched, which is the check
 	# telling you the suppression was unnecessary. Listen to it.

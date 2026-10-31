@@ -1017,8 +1017,8 @@ class EventON_Archive_Builder {
 	 * @return bool
 	 */
 	public static function is_membership_restricted( $post_id ) {
-		if ( function_exists( 'droc_is_arm_restricted' ) ) {
-			return (bool) droc_is_arm_restricted( $post_id );
+		if ( function_exists( 'droc_noindex_is_arm_restricted' ) ) {
+			return (bool) droc_noindex_is_arm_restricted( $post_id );
 		}
 
 		// ARMember stores per-post rules as one `arm_access_plan` row per allowed
@@ -1027,7 +1027,7 @@ class EventON_Archive_Builder {
 			return true;
 		}
 
-		// Term-level rules, only readable when ARMember Pro is active.
+		// Term-level rules, when ARMember exposes its term-meta reader.
 		if ( ! function_exists( 'get_arm_term_meta' ) ) {
 			return false;
 		}

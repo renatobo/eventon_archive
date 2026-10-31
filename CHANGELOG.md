@@ -4,6 +4,15 @@ All notable changes to EventON Archive. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.1] - 2026-10-31
+
+### Fixed
+
+- Call DROC Noindex Restricted's actual `droc_noindex_is_arm_restricted()` helper
+  so archive membership classification delegates to its restriction rules when
+  available. Preserve the standalone ARMember fallback when the helper is absent.
+- Add an isolated regression test for delegated restricted and unrestricted results.
+
 ## [1.10.0] - 2026-08-09
 
 Version 1.9.0 was never released. Its work is included here, so this release

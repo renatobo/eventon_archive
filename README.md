@@ -158,7 +158,7 @@ The theme supplies typography, colour and spacing. The bundled stylesheet is abo
 
 Anything not `publish` is out by definition.
 
-The ARMember check defers to `droc_is_arm_restricted()` when [DROC Noindex Restricted](https://github.com/renatobo/droc-noindex-restricted) is active, so both plugins always agree on what "restricted" means, and falls back to reading ARMember's meta directly.
+The ARMember check defers to `droc_noindex_is_arm_restricted()` when [DROC Noindex Restricted](https://github.com/renatobo/droc-noindex-restricted) is active, so both plugins always agree on what "restricted" means, and falls back to reading ARMember's meta directly.
 
 The check is deliberately **viewer-independent**. The cache is generated once, often by cron running as an administrator, and served to everyone, so "can the current user see this" would be exactly the wrong question.
 
@@ -239,3 +239,7 @@ See [CHANGELOG.md](CHANGELOG.md). Releases and their zips are on the
 ## License
 
 GPLv2 or later.
+
+## Compatibility review: ARMember 8.0 / Lite 6.2, WordPress 7.1.4
+
+Premium: **Source-compatible; helper delegation fixed in 1.10.1**. Lite: **Source-compatible; helper delegation fixed in 1.10.1**. These are source assessments; WordPress 7.1.4 runtime testing is pending. See [compatibility status and findings](COMPATIBILITY.md).
