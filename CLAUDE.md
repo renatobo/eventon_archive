@@ -54,7 +54,7 @@ zip -qr eventon_archive-<version>.zip eventon_archive \
 unzip -l eventon_archive-<version>.zip   # expect 16 files, no .git, no vendor, no tests
 ```
 
-Renato installs the zip by hand through Plugins → Add New → Upload. There is no deploy step and no CI.
+Renato installs the zip by hand through Plugins → Add New → Upload. There is no deploy step. GitHub CI runs syntax/assets checks and the existing Composer quality gate; see `CI.md`.
 
 **`grep` on this machine is ugrep, and `rg` is installed.** Two things to know before writing a scan: ugrep rejects an unescaped `[` in a pattern (`$_GET[` fails with "mismatched [ ]" — use `-F` or escape it), and zsh expands a bare `--include=*.php` before grep ever sees it, so quote it. `rg` avoids both and is what the `wordpress-skills` files assume.
 
@@ -75,7 +75,7 @@ Notes on the PHPStan setup, all of them things that will look wrong later otherw
 
 `tests/bootstrap.php` is a deliberately small fake WordPress: faithful reimplementations of `shortcode_atts()`, `sanitize_key()`, `wp_date()`, `current_time()`, the `esc_*` family, and a `get_object_taxonomies()` that reports EventON-shaped `event_type*` taxonomies from `$GLOBALS['eventon_archive_test_taxonomies']`, which a test can rewrite to model a site with different or no event types.
 
-**The rule for what may be faked:** only functions whose real behaviour can be reproduced honestly in a few lines. `WP_Query`, post meta, term lookups and the options table are deliberately absent, so `collect_events()`, the exclusion rules and cache persistence are **not** covered. Faking those would make the tests assert the fake. They need real WordPress, and that harness is not worth its cost yet: it means Docker plus npm against a repo that has neither, for a plugin with no CI that is installed by hand. Revisit if this grows a second consumer site.
+**The rule for what may be faked:** only functions whose real behaviour can be reproduced honestly in a few lines. `WP_Query`, post meta, term lookups and the options table are deliberately absent, so `collect_events()`, the exclusion rules and cache persistence are **not** covered. Faking those would make the tests assert the fake. They need real WordPress, and that harness is not worth its cost yet: it means Docker plus npm against a repo that has neither, for a plugin installed by hand. Revisit if this grows a second consumer site.
 
 Two things in the bootstrap that look arbitrary and are not:
 
