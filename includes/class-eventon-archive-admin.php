@@ -32,7 +32,37 @@ class EventON_Archive_Admin {
 	 */
 	public static function init() {
 		add_action( 'admin_menu', array( __CLASS__, 'add_menu' ) );
+		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue_styles' ) );
+		add_filter( 'plugin_action_links_' . plugin_basename( EVENTON_ARCHIVE_FILE ), array( __CLASS__, 'settings_link' ) );
 		add_action( 'admin_post_eventon_archive_rebuild', array( __CLASS__, 'handle_rebuild' ) );
+	}
+
+	/**
+	 * Load presentation only on this plugin's settings screen.
+	 *
+	 * @param string $hook_suffix Current admin page.
+	 */
+	public static function enqueue_styles( $hook_suffix ) {
+		if ( 'settings_page_' . self::PAGE_SLUG !== $hook_suffix ) {
+			return;
+		}
+
+		wp_enqueue_style( 'eventon-archive-admin', EVENTON_ARCHIVE_URL . 'assets/admin.css', array(), EVENTON_ARCHIVE_VERSION );
+	}
+
+	/**
+	 * Add the same settings shortcut as the other local plugins.
+	 *
+	 * @param array<string> $links Plugin action links.
+	 * @return array<string>
+	 */
+	public static function settings_link( $links ) {
+		array_unshift( $links, sprintf(
+			'<a href="%s">%s</a>',
+			esc_url( admin_url( 'options-general.php?page=' . self::PAGE_SLUG ) ),
+			esc_html__( 'Settings', 'eventon_archive' )
+		) );
+		return $links;
 	}
 
 	/**
@@ -173,7 +203,21 @@ class EventON_Archive_Admin {
 		}
 
 		?>
-		<div class="wrap">
+		<div class="wrap eventon-archive-admin">
+			<div class="eventon-archive-hero">
+				<img src="<?php echo esc_url( EVENTON_ARCHIVE_URL . 'assets/eventon-archive-settings-banner.svg' ); ?>" width="750" height="210" alt="" class="eventon-archive-hero-image" />
+			</div>
+			<div class="eventon-archive-meta">
+				<a href="https://github.com/renatobo/eventon_archive" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'GitHub Repository', 'eventon_archive' ); ?></a>
+				<span><?php
+					/* translators: %s: Plugin version. */
+					printf( esc_html__( 'Version %s', 'eventon_archive' ), esc_html( EVENTON_ARCHIVE_VERSION ) );
+				?></span>
+				<a href="https://github.com/renatobo/eventon_archive/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Release notes', 'eventon_archive' ); ?></a>
+				<a href="https://github.com/renatobo" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Renato Bonomini on GitHub', 'eventon_archive' ); ?></a>
+				<a href="https://github.com/afragen/git-updater" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'GitHub updates via Git Updater', 'eventon_archive' ); ?></a>
+			</div>
+			<div class="eventon-archive-headline">
 			<h1><?php esc_html_e( 'EventON Archive', 'eventon_archive' ); ?></h1>
 
 			<?php
@@ -202,7 +246,7 @@ class EventON_Archive_Admin {
 				</div>
 			<?php endif; ?>
 
-			<p>
+			<p class="eventon-archive-intro">
 				<?php
 				esc_html_e(
 					'Builds a crawlable list of every published event, grouped by year and month, so past events stay reachable by search engines. Members-only events restricted by ARMember are never listed.',
@@ -211,8 +255,11 @@ class EventON_Archive_Admin {
 				?>
 			</p>
 
+			</div>
+
+			<section class="eventon-archive-card">
 			<h2><?php esc_html_e( 'Status', 'eventon_archive' ); ?></h2>
-			<table class="widefat striped" style="max-width:44rem">
+			<table class="widefat striped">
 				<tbody>
 					<tr>
 						<th scope="row"><?php esc_html_e( 'Last built', 'eventon_archive' ); ?></th>
@@ -299,12 +346,15 @@ class EventON_Archive_Admin {
 				</tbody>
 			</table>
 
-			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="margin-top:1rem">
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="eventon-archive-rebuild">
 				<input type="hidden" name="action" value="eventon_archive_rebuild" />
 				<?php wp_nonce_field( self::REBUILD_NONCE ); ?>
 				<?php submit_button( __( 'Rebuild now', 'eventon_archive' ), 'secondary', 'submit', false ); ?>
 			</form>
 
+			</section>
+
+			<section class="eventon-archive-card">
 			<h2><?php esc_html_e( 'Usage', 'eventon_archive' ); ?></h2>
 			<p><?php esc_html_e( 'Add the archive to a page, then link that page from your footer or menu so the archive itself is not orphaned.', 'eventon_archive' ); ?></p>
 			<p>
@@ -318,12 +368,12 @@ class EventON_Archive_Admin {
 			</p>
 			<p><?php esc_html_e( 'The block and the shortcode take the same options and share the same cache.', 'eventon_archive' ); ?></p>
 
-			<table class="widefat striped" style="max-width:44rem">
+			<table class="widefat striped">
 				<thead>
 					<tr>
-						<th><?php esc_html_e( 'Attribute', 'eventon_archive' ); ?></th>
-						<th><?php esc_html_e( 'Default', 'eventon_archive' ); ?></th>
-						<th><?php esc_html_e( 'What it does', 'eventon_archive' ); ?></th>
+						<th scope="col"><?php esc_html_e( 'Attribute', 'eventon_archive' ); ?></th>
+						<th scope="col"><?php esc_html_e( 'Default', 'eventon_archive' ); ?></th>
+						<th scope="col"><?php esc_html_e( 'What it does', 'eventon_archive' ); ?></th>
 					</tr>
 				</thead>
 				<tbody>
@@ -393,6 +443,9 @@ class EventON_Archive_Admin {
 				</tbody>
 			</table>
 
+			</section>
+
+			<section class="eventon-archive-card">
 			<h2><?php esc_html_e( 'One figure in a sentence', 'eventon_archive' ); ?></h2>
 			<p>
 				<?php
@@ -403,12 +456,12 @@ class EventON_Archive_Admin {
 				?>
 			</p>
 			<p><code>[eventon_archive_count family="Bike Night"]</code></p>
-			<table class="widefat striped" style="max-width:44rem">
+			<table class="widefat striped">
 				<thead>
 					<tr>
-						<th><?php esc_html_e( 'Attribute', 'eventon_archive' ); ?></th>
-						<th><?php esc_html_e( 'Default', 'eventon_archive' ); ?></th>
-						<th><?php esc_html_e( 'What it does', 'eventon_archive' ); ?></th>
+						<th scope="col"><?php esc_html_e( 'Attribute', 'eventon_archive' ); ?></th>
+						<th scope="col"><?php esc_html_e( 'Default', 'eventon_archive' ); ?></th>
+						<th scope="col"><?php esc_html_e( 'What it does', 'eventon_archive' ); ?></th>
 					</tr>
 				</thead>
 				<tbody>
@@ -435,6 +488,7 @@ class EventON_Archive_Admin {
 				</tbody>
 			</table>
 			<p><?php esc_html_e( 'There is no block for this one: it belongs inside a paragraph, and a shortcode expands there. Like any shortcode it does not expand in Site Editor templates.', 'eventon_archive' ); ?></p>
+			</section>
 		</div>
 		<?php
 	}

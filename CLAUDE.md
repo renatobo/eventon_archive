@@ -23,11 +23,13 @@ includes/class-eventon-archive-admin.php   Settings → EventON Archive: status,
 blocks/archive/block.json                  block metadata, attributes mirror the shortcode
 blocks/archive/editor.js                   plain ES5 editor script, no build step
 blocks/archive/editor.asset.php            hand-written asset manifest: deps + version for editor.js
+assets/admin.css                          settings-screen styles, scoped to this screen
+assets/eventon-archive-settings-banner.svg settings banner, matching the local plugin family
 assets/eventon-archive.css                 deliberately thin, no layout opinions
 assets/eventon-archive-counters.js         count-up animation, progressive enhancement only
 ```
 
-Eight shipped files. No npm, no build step, no runtime dependencies. PHP 8.0+, WordPress 6.5+.
+Ten shipped files. No npm, no build step, no runtime dependencies. PHP 8.0+, WordPress 6.5+.
 
 Composer and `tests/` exist but ship nothing: they hold the PHPStan setup and the constant stubs it needs. See "Verify and Package". Do not add a runtime dependency or a build step without a much better reason than convenience.
 
@@ -42,16 +44,14 @@ python3 -c "import json; json.load(open('blocks/archive/block.json')); print('ok
 composer install                                    # first run only
 composer check                                      # phpstan + phpunit, expect both clean
 
-cd .. && rm -f eventon_archive-<version>.zip
-zip -qr eventon_archive-<version>.zip eventon_archive \
-  -x '*.DS_Store' '*.zip' \
-     'eventon_archive/.git/*' 'eventon_archive/.gitignore' 'eventon_archive/.claude/*' \
-     'eventon_archive/.phpunit.cache/*' \
-     'eventon_archive/vendor/*' 'eventon_archive/tests/*' \
-     'eventon_archive/composer.*' 'eventon_archive/phpstan.neon*' \
-     'eventon_archive/phpunit.xml*' 'eventon_archive/CLAUDE.md'
+# Package an explicit file list so development files cannot leak into releases.
+cd ..
+zip eventon_archive-<version>.zip \
+  eventon_archive/eventon_archive.php eventon_archive/includes/*.php \
+  eventon_archive/blocks/archive/* eventon_archive/assets/* \
+  eventon_archive/README.md eventon_archive/CHANGELOG.md eventon_archive/LICENSE
 
-unzip -l eventon_archive-<version>.zip   # expect 16 files, no .git, no vendor, no tests
+unzip -l eventon_archive-<version>.zip   # expect 13 files, no .git, no vendor, no tests
 ```
 
 Renato installs the zip by hand through Plugins → Add New → Upload. There is no deploy step. GitHub CI runs syntax/assets checks and the existing Composer quality gate; see `CI.md`.
@@ -131,7 +131,7 @@ Name the zip for the version and delete the previous one, so there is never any 
 - **Prime caches before per-event lookups.** `collect_events()` calls `update_meta_cache()` always, and `update_object_term_cache()` when `location` or `category` is on. Adding any new per-event `get_the_terms()` or meta read without priming turns one query into one query per event, ~400 on this site.
 - **Cache option is written with autoload `false`.** It holds tens of kilobytes of HTML and has no business loading on every request. Pass the boolean, not the string `'no'`: core still maps `'no'` to `'off'` in `wp_determine_option_autoload_value()`, but that is the legacy-compat branch and the parameter has been typed `bool|null` since 6.6. `save_cache()` handles the add-vs-update distinction because `update_option()` alone will not change an existing row's autoload flag on older WordPress.
 - **No JSON-LD, deliberately.** Event pages already emit their own `Event` schema, and EventON's emitter is fragile enough (see the drocdesmo repo's `seo/eventon-schema-bug-report.md`). A second emitter here would be one more thing to keep valid.
-- **`editor.js` is plain ES5 against `wp.*` globals.** No JSX, no bundler. Keep it that way: adding a build step means `node_modules` and a release pipeline for a plugin that is otherwise eight files with no runtime dependencies. **A new `wp.*` global needs its handle added to `blocks/archive/editor.asset.php`** as well as to the IIFE arguments. Miss that and it still appears to work, because core loads most editor packages anyway and `enqueue_block_editor_assets` fires late: it breaks only once something changes enqueue order, and then it breaks as a block missing from the inserter with a console error, which is a long way from the edit that caused it.
+- **`editor.js` is plain ES5 against `wp.*` globals.** No JSX, no bundler. Keep it that way: adding a build step means `node_modules` and a release pipeline for a plugin that is otherwise ten files with no runtime dependencies. **A new `wp.*` global needs its handle added to `blocks/archive/editor.asset.php`** as well as to the IIFE arguments. Miss that and it still appears to work, because core loads most editor packages anyway and `enqueue_block_editor_assets` fires late: it breaks only once something changes enqueue order, and then it breaks as a block missing from the inserter with a console error, which is a long way from the edit that caused it.
 
 ## Adding an Option
 

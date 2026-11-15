@@ -4,6 +4,16 @@ All notable changes to EventON Archive. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.2] - 2026-11-15
+
+### Changed
+
+- Align the settings page with the other local plugins: archive banner,
+  repository/version/author links, shared typography, and bordered content panels.
+- Load the admin stylesheet only on the archive settings screen and add a
+  Settings shortcut to the Plugins list.
+- Refresh 11 Composer development dependencies; no runtime dependencies added.
+
 ## [1.10.1] - 2026-10-31
 
 ### Fixed

@@ -1,0 +1,91 @@
+.eventon-archive-admin {
+	max-width: 1120px;
+	margin-top: 18px;
+}
+
+.eventon-archive-hero {
+	margin: 0 0 16px;
+	border: 1px solid #c8ccd0;
+	background: #f6f7f7;
+	display: block;
+	max-width: 750px;
+	width: fit-content;
+}
+
+/* Never scaled past the width it was drawn at, only down. */
+.eventon-archive-hero-image {
+	display: block;
+	width: min(100%, 750px);
+	height: auto;
+}
+
+.eventon-archive-meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	margin: 16px 0 10px;
+}
+
+.eventon-archive-meta a,
+.eventon-archive-meta span {
+	display: inline-flex;
+	align-items: center;
+	min-height: 36px;
+	padding: 0 14px;
+	background: #f6f7f7;
+	border: 1px solid #c3c4c7;
+	color: #0f172a;
+	text-decoration: none;
+	box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.eventon-archive-meta a:hover {
+	border-color: #2271b1;
+	color: #2271b1;
+}
+
+.eventon-archive-meta a:focus-visible {
+	outline: 2px solid currentColor;
+	outline-offset: 2px;
+}
+
+.eventon-archive-headline {
+	margin: 8px 0 20px;
+}
+
+.eventon-archive-headline h1 {
+	margin: 0 0 8px;
+	font-size: 42px;
+	line-height: 1.1;
+	color: #0f172a;
+	font-weight: 400;
+}
+
+.eventon-archive-intro {
+	margin: 0 0 20px;
+	max-width: 76ch;
+	color: #475569;
+	font-size: 14px;
+	line-height: 1.65;
+}
+
+.eventon-archive-card {
+	max-width: 960px;
+	margin-top: 1rem;
+	padding: 1rem 1.25rem;
+	border: 1px solid #c3c4c7;
+	background: #fff;
+}
+
+.eventon-archive-card h2 {
+	margin-top: 0;
+}
+
+.eventon-archive-admin .widefat { width: 100%; table-layout: fixed; }
+.eventon-archive-admin .widefat th { width: 25%; overflow-wrap: anywhere; }
+.eventon-archive-admin .widefat td { overflow-wrap: anywhere; }
+.eventon-archive-rebuild { margin-top: 1rem; }
+@media screen and (max-width: 782px) {
+	.eventon-archive-card { padding: 0.75rem; }
+	.eventon-archive-headline h1 { font-size: 32px; }
+}
